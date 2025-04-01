@@ -132,3 +132,7 @@ python click.py autoclick 2 0.2 15 right
 ## Contributing
 
 Contributions, bug reports, and feature requests are welcome. Please open an issue or submit a pull request on the [GitHub repository](https://github.com/OTAKUWeBer/Wayland-automation).
+
+## Acknowledgements
+
+The main connecting pipe and Wayland communication mechanism used in this project is based on work by [Zai-Kun](https://github.com/Zai-Kun). Special thanks for providing the foundational components that make this automation possible.

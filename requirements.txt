@@ -1,0 +1,2 @@
+# Additional Python dependencies can be added here if needed.
+# Note: wtype and wayland-info must be installed via your AUR helper (e.g., paru or yay) on Arch Linux.

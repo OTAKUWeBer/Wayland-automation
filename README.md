@@ -4,48 +4,70 @@ A lightweight Python tool for automating pointer and keyboard actions on Wayland
 
 ## Features
 
-- **Pointer Automation (Mouse):**
-  - **Basic Click:** Move the pointer to a specified (x, y) coordinate and optionally perform a click (left or right).
-  - **Swipe:** Simulate a drag gesture by swiping from one coordinate to another, with customizable speed.
-  - **Auto-Click:** Wait for a configurable delay, then repeatedly click at the current pointer position for a set duration at defined intervals.
+### Pointer Automation (Mouse)
+- **Basic Click:**  
+  Move the pointer to a specified (x, y) coordinate and optionally perform a click (left or right).
 
-- **Keyboard Automation:**
-  - **Typewrite:** Type out a string with an optional delay between each character.
-  - **Press:** Simulate a single key press (key down then key up).
-  - **Hotkey:** Simulate key combinations (e.g., Ctrl+A).
+- **Swipe:**  
+  Simulate a drag gesture by swiping from one coordinate to another, with a customizable speed.
+
+- **Auto-Click:**  
+  Wait for a configurable delay, then repeatedly click at the current pointer position for a set duration at defined intervals.
+
+### Keyboard Automation
+- **Typewrite:**  
+  Type out a string with an optional delay between each character.
+
+- **Press:**  
+  Simulate a single key press (key down then key up).
+
+- **Hotkey:**  
+  Simulate key combinations (e.g., Ctrl+A).
 
 ## Requirements
 
 - **Python 3.x**
-- **Wayland Environment:** Ensure you are running a Wayland session.
-- **wayland-info:** This binary is required to obtain your screen resolution.
-  - **Download/Installation:**
-    - **GitHub:** [rtbo/wayland-info](https://github.com/rtbo/wayland-info)
-    - **Debian/Ubuntu:**
+- **Wayland Environment:**  
+  Ensure you are running a Wayland session.
+
+- **System Dependencies:**  
+  This project relies on the following system-level utilities, which are not available via PyPI:
+
+  - **wayland-info:** Used to obtain your screen resolution.
+    - **Installation:**
+      - **Debian/Ubuntu:**
+        ```bash
+        sudo apt install wayland-info
+        ```
+      - **Arch Linux:**
+        ```bash
+        yay -S wayland-info
+        ```
+        or
+        ```bash
+        paru -S wayland-info
+        ```
+
+  - **wtype:** Used for simulating keyboard actions.
+    - **Installation (Arch Linux):**
       ```bash
-      sudo apt install wayland-info
-      ```
-    - **Arch Linux:**
-      ```bash
-      yay -S wayland-info
+      yay -S wtype
       ```
       or
       ```bash
-      paru -S wayland-info
+      paru -S wtype
       ```
-
-- **wtype:** This binary is used for simulating keyboard actions.
-  - **Installation (Arch Linux):**
-    ```bash
-    yay -S wtype
-    ```
-    or
-    ```bash
-    paru -S wtype
-    ```
 
 ## Installation
 
+### **Install via PyPI**
+The package is available on PyPI and can be installed using:
+
+```bash
+pip install wayland-automation
+```
+
+### **Install from Source**
 1. **Clone the Repository:**
 
    ```bash
@@ -60,17 +82,26 @@ A lightweight Python tool for automating pointer and keyboard actions on Wayland
    source venv/bin/activate
    ```
 
-3. **Ensure `wayland-info` and `wtype` are Installed:**
+3. **Install System Dependencies:**  
+   Ensure that both `wayland-info` and `wtype` are installed and available in your system's PATH as described above.
 
-   Verify that both binaries are installed and accessible in your system's PATH.
+4. **Install the Python Package:**
+
+   ```bash
+   pip install .
+   ```
+
+   For development, consider using an editable install:
+
+   ```bash
+   pip install -e .
+   ```
 
 ## Usage
 
-This project provides two main modules: one for pointer automation (mouse) and one for keyboard automation.
-
 ### Pointer Automation
 
-The pointer automation is handled by **mouse_controller.py**.
+The pointer automation is handled by `mouse_controller.py`.
 
 #### Basic Click
 
@@ -140,7 +171,7 @@ python mouse_controller.py autoclick 2 0.2 15 right
 
 ### Keyboard Automation
 
-The keyboard automation is provided by **keyboard_controller.py**. You can use this module within your own Python code. For example:
+The keyboard automation is provided by `keyboard_controller.py` and can be used within your own Python code. For example:
 
 ```python
 from keyboard_controller import Keyboard
@@ -162,7 +193,7 @@ kb.hotkey("ctrl", "a")
    Low-level Wayland messages are sent to move the pointer, simulate button events, and emulate keyboard actions via `wtype`.
 
 3. **Screen Resolution:**  
-   A helper script (in the `utils` directory) uses `wayland-info` to retrieve your current screen resolution, ensuring accurate pointer positioning.
+   A helper script in the `utils` directory uses `wayland-info` to retrieve your current screen resolution, ensuring accurate pointer positioning.
 
 4. **Modes Implementation:**  
    - **Pointer Modes:**  
@@ -176,4 +207,4 @@ Contributions, bug reports, and feature requests are welcome. Please open an iss
 
 ## Acknowledgements
 
-The main connecting pipe and Wayland communication mechanism used in this project is based on work by [Zai-Kun](https://github.com/Zai-Kun). Special thanks for providing the foundational components that make this automation possible.
+Special thanks to [Zai-Kun](https://github.com/Zai-Kun) for the foundational work on Wayland communication mechanisms that inspired this project.

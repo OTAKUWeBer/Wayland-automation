@@ -1,1 +1,32 @@
-__pycache__
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+.eggs/
+*.egg-info/
+
+# Virtual environments (adjust folder names as needed)
+venv/
+env/
+.myenv/
+myenv/
+
+# Unit test / coverage reports
+.coverage
+.tox/
+.nox/
+.cache/
+
+# Editor and IDE files
+.vscode/
+.idea/
+
+# OS-generated files
+.DS_Store

@@ -3,7 +3,7 @@ import socket
 import struct
 import sys
 import time
-from helper.screen_resolution import get_resolution
+from utils.screen_resolution import get_resolution
 
 logging = False
 
@@ -252,13 +252,13 @@ def print_usage():
     usage_text = """
 Usage:
   For click (default mode): 
-      python click.py <x> <y> [<button>]
+      python mouse_controller.py <x> <y> [<button>]
   For explicit click mode: 
-      python click.py click <x> <y> [<button>]
+      python mouse_controller.py click <x> <y> [<button>]
   For swipe: 
-      python click.py swipe <start_x> <start_y> <end_x> <end_y> [<speed>]
+      python mouse_controller.py swipe <start_x> <start_y> <end_x> <end_y> [<speed>]
   For auto-click: 
-      python click.py autoclick [<initial_delay> <interval> <duration> <button>]
+      python mouse_controller.py autoclick [<initial_delay> <interval> <duration> <button>]
 """
     print(usage_text.strip())
 
@@ -281,7 +281,7 @@ if __name__ == "__main__":
 
     if mode == "swipe":
         if len(args) not in [4, 5]:
-            print("Usage: python click.py swipe <start_x> <start_y> <end_x> <end_y> [<speed>]")
+            print("Usage: python mouse_controller.py swipe <start_x> <start_y> <end_x> <end_y> [<speed>]")
             sys.exit(1)
         try:
             start_x = int(args[0])
@@ -321,7 +321,7 @@ if __name__ == "__main__":
 
     elif mode == "click":
         if len(args) not in [2, 3]:
-            print("Usage: python click.py click <x> <y> [<button>]")
+            print("Usage: python mouse_controller.py click <x> <y> [<button>]")
             sys.exit(1)
         try:
             x = int(args[0])

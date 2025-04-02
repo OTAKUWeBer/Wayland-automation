@@ -1,12 +1,14 @@
-# Wayland Automation
+# **Wayland Automation**  
 
 A lightweight Python tool for automating pointer and keyboard actions on Wayland. This project allows you to perform basic clicks, swipes, auto-clicks, and keyboard actions using virtual devices in your Wayland environment.
 
-## Features
+---
 
-### Pointer Automation (Mouse)
+## **Features**
+
+### **Pointer Automation (Mouse)**
 - **Basic Click:**  
-  Move the pointer to a specified (x, y) coordinate and optionally perform a click (left or right).
+  Move the pointer to a specified `(x, y)` coordinate and optionally perform a click (left or right).
 
 - **Swipe:**  
   Simulate a drag gesture by swiping from one coordinate to another, with a customizable speed.
@@ -14,7 +16,7 @@ A lightweight Python tool for automating pointer and keyboard actions on Wayland
 - **Auto-Click:**  
   Wait for a configurable delay, then repeatedly click at the current pointer position for a set duration at defined intervals.
 
-### Keyboard Automation
+### **Keyboard Automation**
 - **Typewrite:**  
   Type out a string with an optional delay between each character.
 
@@ -22,9 +24,11 @@ A lightweight Python tool for automating pointer and keyboard actions on Wayland
   Simulate a single key press (key down then key up).
 
 - **Hotkey:**  
-  Simulate key combinations (e.g., Ctrl+A).
+  Simulate key combinations (e.g., `Ctrl+A`).
 
-## Requirements
+---
+
+## **Requirements**
 
 - **Python 3.x**
 - **Wayland Environment:**  
@@ -58,7 +62,9 @@ A lightweight Python tool for automating pointer and keyboard actions on Wayland
       paru -S wtype
       ```
 
-## Installation
+---
+
+## **Installation**
 
 ### **Install via PyPI**
 The package is available on PyPI and can be installed using:
@@ -97,94 +103,58 @@ pip install wayland-automation
    pip install -e .
    ```
 
-## Usage
+---
 
-### Pointer Automation
+## **Usage**
+
+### **Pointer Automation (Mouse)**
 
 The pointer automation is handled by `mouse_controller.py`.
 
-#### Basic Click
-
+#### **Basic Click (Python API)**
 Move the pointer to `(x, y)` and optionally perform a click.
 
-- **Default Mode (Implicit Click):**
+```python
+from wayland_automation.mouse_controller import Mouse
 
-  ```bash
-  python mouse_controller.py <x> <y> [<button>]
-  ```
-
-- **Explicit Click Mode:**
-
-  ```bash
-  python mouse_controller.py click <x> <y> [<button>]
-  ```
-
-- **Parameters:**
-  - `<x>`: X-coordinate.
-  - `<y>`: Y-coordinate.
-  - `[<button>]`: Optional. Specify `left` or `right` (case-insensitive) or a numeric code for the mouse button.
-
-_Example:_
-
-```bash
-python mouse_controller.py 100 200 left
+mouse = Mouse()
+mouse.move(100, 200)  # Move to coordinates (100, 200)
+mouse.click("left")  # Perform a left click
 ```
 
-#### Swipe
-
+#### **Swipe (Drag)**
 Simulate a swipe (drag) gesture from one coordinate to another.
 
-```bash
-python mouse_controller.py swipe <start_x> <start_y> <end_x> <end_y> [<speed>]
+```python
+mouse.swipe(100, 200, 400, 500, speed=1.5)
 ```
 
-- **Parameters:**
-  - `<start_x>`, `<start_y>`: Starting coordinates.
-  - `<end_x>`, `<end_y>`: Ending coordinates.
-  - `[<speed>]`: Optional duration (in seconds) for the swipe (default: `1.0`).
-
-_Example:_
-
-```bash
-python mouse_controller.py swipe 100 200 400 500 1.5
-```
-
-#### Auto-Click
-
+#### **Auto-Click**
 Automatically click at the current pointer position repeatedly.
 
-```bash
-python mouse_controller.py autoclick [<initial_delay> <interval> <duration> <button>]
+```python
+mouse.auto_click(initial_delay=2, interval=0.2, duration=15, button="right")
 ```
 
-- **Parameters:**
-  - `<initial_delay>`: Seconds to wait before starting auto-clicking (default: `3.0`).
-  - `<interval>`: Seconds between each click (default: `0.1`).
-  - `<duration>`: Total duration in seconds for auto-clicking (default: `10.0`).
-  - `<button>`: Optional. Specify `left` or `right` (default: `left`).
+---
 
-_Example:_
-
-```bash
-python mouse_controller.py autoclick 2 0.2 15 right
-```
-
-### Keyboard Automation
-
-The keyboard automation is provided by `keyboard_controller.py` and can be used within your own Python code. For example:
+### **Keyboard Automation (Python API)**
 
 ```python
-from keyboard_controller import Keyboard
+from wayland_automation.keyboard_controller import Keyboard
 import time
 
 kb = Keyboard()
 time.sleep(2)  # Gives time to switch to another window
+
 kb.typewrite("Hello, Wayland!", interval=0.05)
 kb.press("enter")
 kb.hotkey("ctrl", "a")
 ```
 
-## How It Works
+---
+
+## **How It Works**
 
 1. **Virtual Device Initialization:**  
    The scripts connect to the Wayland server via a Unix socket and initialize virtual devices (pointer and keyboard) using the Wayland protocol.
@@ -201,10 +171,14 @@ kb.hotkey("ctrl", "a")
    - **Keyboard Mode:**  
      The keyboard module supports text entry, single key presses, and hotkey combinations.
 
-## Contributing
+---
+
+## **Contributing**
 
 Contributions, bug reports, and feature requests are welcome. Please open an issue or submit a pull request on the [GitHub repository](https://github.com/OTAKUWeBer/Wayland-automation).
 
-## Acknowledgements
+---
+
+## **Acknowledgements**
 
 Special thanks to [Zai-Kun](https://github.com/Zai-Kun) for the foundational work on Wayland communication mechanisms that inspired this project.

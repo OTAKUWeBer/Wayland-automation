@@ -3,7 +3,7 @@ import socket
 import struct
 import sys
 import time
-from utils.screen_resolution import get_resolution
+from wayland_automation.utils.screen_resolution import get_resolution
 
 logging = False
 

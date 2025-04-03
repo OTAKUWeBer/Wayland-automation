@@ -24,7 +24,7 @@ def encode_wayland_string(s: str) -> bytes:
     padding = b"\x00" * padding_size
     return struct.pack("<I", length) + encoded + padding
 
-class WaylandInput:
+class Mouse:
     def __init__(self):
         self.socket_path = self.get_socket_path()
         self.sock = self.connect_to_wayland()
@@ -277,7 +277,7 @@ if __name__ == "__main__":
         mode = "click"
         args = sys.argv[1:]
 
-    client = WaylandInput()
+    ms = Mouse()
 
     if mode == "swipe":
         if len(args) not in [4, 5]:
@@ -292,7 +292,7 @@ if __name__ == "__main__":
             print("start_x, start_y, end_x, and end_y must be integers.")
             sys.exit(1)
         speed = args[4] if len(args) == 5 else "normal"
-        client.swipe(start_x, start_y, end_x, end_y, speed)
+        ms.swipe(start_x, start_y, end_x, end_y, speed)
 
     elif mode == "autoclick":
         # Default parameters for auto-click
@@ -317,7 +317,7 @@ if __name__ == "__main__":
                 print("Duration must be a number. Using default of 10 seconds.")
         if len(args) == 4:
             button = args[3]
-        client.auto_click(initial_delay, interval, duration, button)
+        ms.auto_click(initial_delay, interval, duration, button)
 
     elif mode == "click":
         if len(args) not in [2, 3]:
@@ -330,4 +330,4 @@ if __name__ == "__main__":
             print("x and y must be integers.")
             sys.exit(1)
         button = args[2] if len(args) == 3 else None
-        client.click(x, y, button)
+        ms.click(x, y, button)

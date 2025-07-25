@@ -45,21 +45,13 @@ A lightweight Python tool for automating pointer and keyboard actions on Wayland
         ```
       - **Arch Linux:**
         ```bash
-        yay -S wayland-info
-        ```
-        or
-        ```bash
-        paru -S wayland-info
+        sudo pacman -S wayland-utils
         ```
 
   - **wtype:** Used for simulating keyboard actions.
     - **Installation (Arch Linux):**
       ```bash
-      yay -S wtype
-      ```
-      or
-      ```bash
-      paru -S wtype
+      sudo pacman -S wtype
       ```
 
 ---

@@ -41,26 +41,23 @@ A lightweight Python tool for automating pointer and keyboard actions on Wayland
     - **Installation:**
       - **Debian/Ubuntu:**
         ```bash
-        sudo apt install wayland-info
+        sudo apt install wayland-utils
         ```
       - **Arch Linux:**
         ```bash
-        yay -S wayland-info
-        ```
-        or
-        ```bash
-        paru -S wayland-info
+        sudo pacman -S wayland-utils
         ```
 
   - **wtype:** Used for simulating keyboard actions.
-    - **Installation (Arch Linux):**
-      ```bash
-      yay -S wtype
-      ```
-      or
-      ```bash
-      paru -S wtype
-      ```
+    - **Installation**
+      - **Debian/Ubuntu:**
+        ```bash
+        sudo apt install wtype
+        ```
+      - **Arch Linux:**
+        ```bash
+        sudo pacman -S wtype
+        ```
 
 ---
 

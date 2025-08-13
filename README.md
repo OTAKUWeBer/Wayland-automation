@@ -115,8 +115,7 @@ Move the pointer to `(x, y)` and optionally perform a click.
 from wayland_automation.mouse_controller import Mouse
 
 mouse = Mouse()
-mouse.move(100, 200)  # Move to coordinates (100, 200)
-mouse.click("left")  # Perform a left click
+mouse.click(100, 200, button="left")  # Perform a left click
 ```
 
 #### **Swipe (Drag)**
@@ -133,7 +132,15 @@ Automatically click at the current pointer position repeatedly.
 mouse.auto_click(initial_delay=2, interval=0.2, duration=15, button="right")
 ```
 
----
+### **Example: Track Mouse Position**
+
+```python
+from wayland_automation import mouse_position_generator
+
+# Continuously track mouse position
+for x, y in mouse_position_generator():
+    print(f"Mouse is at: ({x}, {y})")
+```
 
 ### **Keyboard Automation (Python API)**
 

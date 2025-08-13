@@ -1,4 +1,5 @@
 from .mouse_controller import Mouse, print_usage
+from .mouse_position import mouse_position_generator
 from .keyboard_controller import Keyboard
 
 __all__ = ["swipe", "click", "auto_click", "print_usage", "typewrite", "press", "hotkey"]

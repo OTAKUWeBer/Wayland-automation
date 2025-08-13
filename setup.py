@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="wayland_automation",
-    version="0.1.4",
+    version="0.1.5",
     description="A tool for automating Wayland tasks using system packages wtype and wayland-info",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
@@ -11,7 +11,7 @@ setup(
     url="https://github.com/OTAKUWeBer/Wayland-automation",
     packages=find_packages(),
     install_requires=[
-        # Add any additional Python dependencies here.
+        "evdev",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

@@ -2,7 +2,7 @@ from .mouse_controller import Mouse, print_usage
 from .mouse_position import mouse_position_generator
 from .keyboard_controller import Keyboard
 
-__all__ = ["swipe", "click", "auto_click", "print_usage", "typewrite", "press", "hotkey"]
+__all__ = ["swipe", "click", "auto_click", "print_usage", "typewrite", "press", "hotkey", "mouse_position_generator"]
 
 def swipe(start_x, start_y, end_x, end_y, speed="normal"):
     Mouse().swipe(start_x, start_y, end_x, end_y, speed)

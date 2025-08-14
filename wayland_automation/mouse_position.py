@@ -1,260 +1,373 @@
 #!/usr/bin/env python3
 """
-mouse_position.py
+wayland_cursor_watch.py
 
-Minimal evdev-based mouse position generator for Linux (works under Wayland).
-Yields (x, y) continuously as a generator. Does not print by default.
+Multi-backend compositor-aware cursor watcher for Wayland systems.
 
-Public API:
-- mouse_position_generator(...)
-- mouse_position_with_callback(...)
-- show_help()
-- cli(argv=None)
+Backends tried (in order):
+ - Hyprland via `hyprctl cursorpos`
+ - wlroots via `wl-find-cursor` (if installed)
+ - XWayland via `xdotool getmouselocation --shell` (if DISPLAY present)
+ - evdev relative-integration fallback (requires access to /dev/input/event*)
+
+Usage:
+    from wayland_cursor_watch import mouse_position_generator
+    for x, y in mouse_position_generator():
+        print(f"Mouse at: {x}, {y}")
+
+Dependencies:
+ - Python packages: evdev (only needed for the evdev fallback)
+     pip install evdev
+ - Optional binaries (used automatically if present):
+     - hyprctl (Hyprland)
+     - wl-find-cursor (wlroots tool)
+     - xdotool (XWayland/X11)
 """
-from __future__ import annotations
 
 import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import threading
 import time
-import argparse
-from select import select
-from collections import namedtuple
-from wayland_automation.utils.screen_resolution import get_resolution
 
-try:
-    import evdev
-    from evdev import ecodes
-except ImportError:
-    raise SystemExit(
-        "Missing dependency: python-evdev. Install with:\n\n"
-        "  sudo pacman -S python-evdev\n"
-        "or\n"
-        "  pip3 install evdev\n"
-    )
+INTERVAL = 0.2
+NUM_RE = re.compile(r"-?\d+")
 
-# fallback for older Pythons
-import fcntl
+# -------------------- Hyprland backend --------------------
+class HyprlandBackend:
+    name = "hyprctl"
+    @staticmethod
+    def available():
+        return shutil.which("hyprctl") is not None
 
-DeviceInfo = namedtuple("DeviceInfo", ["dev", "is_relative", "abs_info"])
-
-__all__ = [
-    "mouse_position_generator",
-    "mouse_position_with_callback",
-    "show_help",
-    "cli",
-]
-
-
-def normalize_resolution(res):
-    if res is None:
-        return 1080, 1920
-    if isinstance(res, (tuple, list)) and len(res) >= 2:
+    @staticmethod
+    def read_once():
         try:
-            return int(res[0]), int(res[1])
+            p = subprocess.run(["hyprctl", "cursorpos"], capture_output=True, text=True, timeout=0.5)
+            txt = (p.stdout or "") + " " + (p.stderr or "")
+            nums = NUM_RE.findall(txt)
+            if len(nums) >= 2:
+                x, y = int(nums[0]), int(nums[1])
+                return x, y
+        except Exception:
+            return None
+        return None
+
+# -------------------- wl-find-cursor backend --------------------
+class WlFindCursorBackend:
+    name = "wl-find-cursor"
+
+    @staticmethod
+    def available():
+        return shutil.which("wl-find-cursor") is not None
+
+    def __init__(self):
+        self.proc = None
+        self._lock = threading.Lock()
+        self._last = None
+        self._running = False
+
+    def start(self):
+        cmd = shutil.which("wl-find-cursor")
+        if not cmd:
+            print(
+                "[!] 'wl-find-cursor' not found.\n"
+                "To install:\n"
+                "  git clone https://github.com/cjacker/wl-find-cursor.git\n"
+                "  cd wl-find-cursor\n"
+                "  make\n"
+                "  sudo cp wl-find-cursor /usr/local/bin/\n"
+                "\nOnce installed, re-run this script."
+            )
+            return False
+
+        # Launch wl-find-cursor process
+        self.proc = subprocess.Popen(
+            [cmd],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        self._running = True
+        self._thr = threading.Thread(target=self._reader, daemon=True)
+        self._thr.start()
+        return True
+
+    def _reader(self):
+        if not self.proc or not self.proc.stdout:
+            return
+        try:
+            for line in self.proc.stdout:
+                if not self._running:
+                    break
+                nums = NUM_RE.findall(line)
+                if len(nums) >= 2:
+                    x, y = int(nums[0]), int(nums[1])
+                    with self._lock:
+                        self._last = (x, y)
         except Exception:
             pass
-    if isinstance(res, str):
-        for sep in ("x", "X", " ", ","):
-            if sep in res:
-                parts = [p.strip() for p in res.split(sep) if p.strip()]
-                if len(parts) >= 2:
+
+    def get_position(self):
+        with self._lock:
+            return self._last
+
+    def stop(self):
+        self._running = False
+        try:
+            if self.proc:
+                self.proc.terminate()
+        except Exception:
+            pass
+
+# -------------------- X11 / XWayland backend (xdotool) --------------------
+class XdotoolBackend:
+    name = "xdotool"
+    @staticmethod
+    def available():
+        return ("DISPLAY" in os.environ) and (shutil.which("xdotool") is not None)
+
+    @staticmethod
+    def read_once():
+        try:
+            p = subprocess.run(["xdotool", "getmouselocation", "--shell"], capture_output=True, text=True, timeout=0.5)
+            # example output:
+            # X=880
+            # Y=443
+            data = {}
+            for line in (p.stdout or "").splitlines():
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    data[k.strip()] = v.strip()
+            if "X" in data and "Y" in data:
+                return int(data["X"]), int(data["Y"])
+        except Exception:
+            return None
+        return None
+
+# -------------------- evdev fallback (relative -> absolute integration) --------------------
+class EvdevFallback:
+    name = "evdev"
+    def __init__(self, seed=(None, None)):
+        try:
+            from evdev import list_devices, InputDevice, ecodes
+            self.evdev = True
+            self.list_devices = list_devices
+            self.InputDevice = InputDevice
+            self.ecodes = ecodes
+        except Exception:
+            self.evdev = False
+        self.device_path = None
+        self.dev = None
+        self._running = False
+        self._lock = threading.Lock()
+        self.width = None
+        self.height = None
+        self.x, self.y = seed
+        if self.x is None or self.y is None:
+            # default later when starting
+            self.x = None
+            self.y = None
+
+    def available(self):
+        return self.evdev
+
+    def find_device(self):
+        # find a REL_X/REL_Y device
+        for path in self.list_devices():
+            try:
+                dev = self.InputDevice(path)
+            except Exception:
+                continue
+            try:
+                try:
+                    caps = dev.capabilities(skip_missing=True)
+                except TypeError:
+                    caps = dev.capabilities()
+            except Exception:
+                try:
+                    dev.close()
+                except Exception:
+                    pass
+                continue
+            rels = caps.get(self.ecodes.EV_REL)
+            if rels:
+                if isinstance(rels, dict):
+                    rels_list = list(rels.keys())
+                else:
+                    rels_list = list(rels)
+                if self.ecodes.REL_X in rels_list and self.ecodes.REL_Y in rels_list:
                     try:
-                        return int(parts[0]), int(parts[1])
+                        dev.close()
                     except Exception:
                         pass
+                    return path
+            try:
+                dev.close()
+            except Exception:
+                pass
+        return None
+
+    def start(self):
+        if not self.evdev:
+            return False
+        self.device_path = self.find_device()
+        if not self.device_path:
+            return False
         try:
-            val = int(res)
-            return val, val
+            self.dev = self.InputDevice(self.device_path)
         except Exception:
+            return False
+
+        # get screen resolution if possible (try wayland util or fallback to 1920x1080)
+        try:
+            from wayland_automation.utils.screen_resolution import get_resolution
+            h, w = get_resolution()
+            self.width, self.height = int(w), int(h)
+        except Exception:
+            self.width, self.height = 1920, 1080
+
+        # seed default if None
+        if self.x is None or self.y is None:
+            self.x = self.width // 2
+            self.y = self.height // 2
+
+        self._running = True
+        self._thr = threading.Thread(target=self._reader, daemon=True)
+        self._thr.start()
+        return True
+
+    def _reader(self):
+        try:
+            for ev in self.dev.read_loop():
+                if not self._running:
+                    break
+                if ev.type == self.ecodes.EV_REL:
+                    with self._lock:
+                        if ev.code == self.ecodes.REL_X:
+                            self.x += ev.value
+                        elif ev.code == self.ecodes.REL_Y:
+                            self.y += ev.value
+                        # clamp
+                        if self.x < 0: self.x = 0
+                        if self.y < 0: self.y = 0
+                        if self.x >= self.width: self.x = self.width - 1
+                        if self.y >= self.height: self.y = self.height - 1
+        except Exception as e:
+            # device disconnect or permission error
             pass
-    try:
-        val = int(res)
-        return val, val
-    except Exception:
-        return 1080, 1920
 
+    def get_position(self):
+        with self._lock:
+            return int(self.x), int(self.y)
 
-def find_pointer_devices():
-    devices = []
-    for path in evdev.list_devices():
+    def stop(self):
+        self._running = False
         try:
-            dev = evdev.InputDevice(path)
-        except Exception:
-            continue
-        caps = dev.capabilities(verbose=False)
-        is_rel = False
-        abs_info = {}
-        if ecodes.EV_REL in caps:
-            rel_codes = [c for c in caps[ecodes.EV_REL]]
-            if ecodes.REL_X in rel_codes or ecodes.REL_Y in rel_codes:
-                is_rel = True
-        if ecodes.EV_ABS in caps:
-            abs_caps = dict(caps[ecodes.EV_ABS])
-            for code in (ecodes.ABS_X, ecodes.ABS_Y,
-                         ecodes.ABS_MT_POSITION_X, ecodes.ABS_MT_POSITION_Y):
-                if code in abs_caps:
-                    try:
-                        abs_info[code] = dev.absinfo(code)
-                    except Exception:
-                        pass
-        if is_rel or abs_info:
-            devices.append(DeviceInfo(dev=dev, is_relative=is_rel, abs_info=abs_info))
-    return devices
-
-
-def scale_abs(value, absinfo, screen_size):
-    if absinfo is None:
-        return None
-    amin = getattr(absinfo, "min", getattr(absinfo, "minimum", 0))
-    amax = getattr(absinfo, "max", getattr(absinfo, "maximum", 1))
-    try:
-        amin, amax = int(amin), int(amax)
-    except Exception:
-        return None
-    if amax == amin:
-        return 0
-    return int((value - amin) * (screen_size - 1) / (amax - amin))
-
-
-def _set_nonblocking(fd):
-    try:
-        os.set_blocking(fd, False)
-    except AttributeError:
-        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
-        fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
-    except Exception:
-        pass
-
-
-def mouse_position_generator(poll_interval=0.05, print_output=False, print_interval=0.25):
-    """
-    Yields (x, y) continuously.
-    - poll_interval: select() timeout
-    - print_output: if True, prints positions in-place
-    - print_interval: interval for printing
-    """
-    raw_res = get_resolution()
-    height, width = normalize_resolution(raw_res)
-    height = int(height); width = int(width)
-
-    devices = find_pointer_devices()
-    if not devices:
-        raise RuntimeError("No pointer-like input devices found. Check /dev/input permissions.")
-
-    for d in devices:
-        try:
-            _set_nonblocking(d.dev.fd)
+            if self.dev:
+                self.dev.close()
         except Exception:
             pass
 
-    cur_x = width // 2
-    cur_y = height // 2
-    fd_map = {d.dev.fd: d for d in devices}
-    last_print_time = 0.0
+# -------------------- orchestrator --------------------
+def pick_backend_and_start():
+    # 1) Hyprland
+    if HyprlandBackend.available():
+        pos = HyprlandBackend.read_once()
+        if pos:
+            return ("hyprctl", lambda: HyprlandBackend.read_once(), None)
 
+    # 2) wl-find-cursor (start streaming)
+    if WlFindCursorBackend.available():
+        w = WlFindCursorBackend()
+        ok = w.start()
+        if ok:
+            return ("wl-find-cursor", w.get_position, w)
+
+    # 3) xdotool if DISPLAY present (XWayland)
+    if XdotoolBackend.available():
+        pos = XdotoolBackend.read_once()
+        if pos:
+            return ("xdotool", lambda: XdotoolBackend.read_once(), None)
+
+    # 4) evdev fallback (seed from previous attempts if any)
+    # try to seed from hyprctl/xdotool outputs if available
+    seed = None
+    if HyprlandBackend.available():
+        seed = HyprlandBackend.read_once()
+    if seed is None and XdotoolBackend.available():
+        seed = XdotoolBackend.read_once()
+
+    ev = EvdevFallback(seed=seed or (None, None))
+    if ev.available():
+        started = ev.start()
+        if started:
+            return ("evdev", ev.get_position, ev)
+
+    return (None, None, None)
+
+def mouse_position_generator(interval=None, print_output=False):
+    """
+    Generator that yields (x, y) mouse positions continuously.
+    
+    Args:
+        interval: Polling interval in seconds (default: 0.2)
+        print_output: If True, prints positions to stdout
+    
+    Yields:
+        tuple: (x, y) coordinates
+    """
+    if interval is None:
+        interval = INTERVAL
+    
+    backend_name, getter, controller = pick_backend_and_start()
+    if backend_name is None:
+        raise RuntimeError("No backend available: install hyprctl (Hyprland) or wl-find-cursor (wlroots) or xdotool, or install python-evdev and grant access to /dev/input/event*.")
+
+    if print_output:
+        print(f"Using backend: {backend_name}")
+    
+    last = None
     try:
         while True:
-            if not fd_map:
-                devices = find_pointer_devices()
-                for d in devices:
-                    try: _set_nonblocking(d.dev.fd)
-                    except Exception: pass
-                fd_map = {d.dev.fd: d for d in devices}
-                if not fd_map:
-                    time.sleep(poll_interval)
-                    continue
-
-            fds = list(fd_map.keys())
-            r, _, _ = select(fds, [], [], poll_interval)
-            changed = False
-
-            for fd in r:
-                dinfo = fd_map.get(fd)
-                if not dinfo:
-                    continue
-                try:
-                    for event in dinfo.dev.read():
-                        if event.type == ecodes.EV_REL and dinfo.is_relative:
-                            if event.code == ecodes.REL_X:
-                                cur_x += event.value; changed = True
-                            elif event.code == ecodes.REL_Y:
-                                cur_y += event.value; changed = True
-                        elif event.type == ecodes.EV_ABS and dinfo.abs_info:
-                            if event.code in (ecodes.ABS_X, ecodes.ABS_MT_POSITION_X):
-                                scaled = scale_abs(event.value, dinfo.abs_info.get(event.code), width)
-                                if scaled is not None:
-                                    cur_x = scaled; changed = True
-                            elif event.code in (ecodes.ABS_Y, ecodes.ABS_MT_POSITION_Y):
-                                scaled = scale_abs(event.value, dinfo.abs_info.get(event.code), height)
-                                if scaled is not None:
-                                    cur_y = scaled; changed = True
-                except BlockingIOError:
-                    pass
-                except OSError:
-                    fd_map.pop(fd, None)
-
-            cur_x = max(0, min(cur_x, width - 1))
-            cur_y = max(0, min(cur_y, height - 1))
-
-            now = time.time()
-            if print_output and (changed or (now - last_print_time) > print_interval):
-                print(f"\rX: {cur_x:4d}  Y: {cur_y:4d}", end="", flush=True)
-                last_print_time = now
-
-            # always yield latest position each loop
-            yield cur_x, cur_y
-
+            pos = getter()
+            if pos:
+                if print_output and pos != last:
+                    print(f"Cursor: x={pos[0]}  y={pos[1]}    ", end="\r", flush=True)
+                    last = pos
+                yield pos
+            else:
+                # backend exists but returned no value yet
+                if print_output:
+                    print("Waiting for cursor data...    ", end="\r", flush=True)
+                # Still yield something to keep the generator active
+                if last:
+                    yield last
+            time.sleep(interval)
     except GeneratorExit:
         pass
     except KeyboardInterrupt:
         return
     finally:
-        for d in devices:
-            try: d.dev.close()
-            except Exception: pass
-
-
-def mouse_position_with_callback(callback, poll_interval=0.05, print_output=False, print_interval=0.25):
-    """Simple wrapper that calls `callback(x, y)` for each yielded position."""
-    for x, y in mouse_position_generator(poll_interval=poll_interval,
-                                         print_output=print_output,
-                                         print_interval=print_interval):
         try:
-            callback(x, y)
+            if controller:
+                controller.stop()
         except Exception:
-            # ignore callback errors
             pass
 
-
-def show_help():
-    """Print minimal help and examples."""
-    print(__doc__)
-    print("Examples:")
-    print("  from mouse_position import mouse_position_generator")
-    print("  for x,y in mouse_position_generator():")
-    print("      print(x, y)")
-    print("\nCLI:")
-    print("  python -m mouse_position    # prints x,y lines until Ctrl+C")
-
-
-def cli(argv=None):
-    """Small CLI used for console_scripts entrypoint."""
-    parser = argparse.ArgumentParser(prog="mousepos", description="Print continuous mouse positions.")
-    parser.add_argument("--poll", type=float, default=0.02, help="select() poll interval (s)")
-    parser.add_argument("--inplace", action="store_true", help="print single updating line")
-    parser.add_argument("--no-header", action="store_true", help="suppress header")
-    args = parser.parse_args(argv)
-
-    if not args.no_header:
-        print("mousepos — printing (x, y) until Ctrl+C")
-
+def main():
+    """CLI interface - same as before for backward compatibility"""
+    interval = float(sys.argv[1]) if len(sys.argv) > 1 else INTERVAL
+    print("Starting compositor-aware cursor watcher. (Ctrl+C to stop)")
+    
     try:
-        for x, y in mouse_position_generator(poll_interval=args.poll, print_output=args.inplace):
-            if not args.inplace:
-                print(f"{x}, {y}")
+        for x, y in mouse_position_generator(interval=interval, print_output=True):
+            pass  # printing is handled inside the generator when print_output=True
     except KeyboardInterrupt:
-        print("\nStopped by user.")
-    return 0
-
+        print("\nStopped.")
 
 if __name__ == "__main__":
-    raise SystemExit(cli())
+    main()

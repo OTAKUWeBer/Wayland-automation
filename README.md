@@ -59,6 +59,21 @@ A lightweight Python tool for automating pointer and keyboard actions on Wayland
         sudo pacman -S wtype
         ```
 
+
+  - **wl-find-cursor:** Used for tracking current mouse position.
+    - **Installation:**
+      - **Debian/Ubuntu:**
+        ```bash
+        sudo apt install wl-find-cursor
+        ```
+        *(build from source)*:
+        ```bash
+        git clone https://github.com/cjacker/wl-find-cursor.git
+        cd wl-find-cursor
+        make
+        sudo cp wl-find-cursor /usr/local/bin/
+        ```
+
 ---
 
 ## **Installation**

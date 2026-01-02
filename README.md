@@ -96,4 +96,4 @@ We welcome contributions! Please see `CONTRIBUTING.md` for guidelines on submitt
 
 ## License
 
-This project is licensed under the [MIT License](LICENCE) - see the LICENSE file for details.
+This project is licensed under the [MIT Licence](LICENCE) - see the LICENSE file for details.

@@ -61,6 +61,7 @@ from wayland_automation.keyboard_controller import Keyboard
 
 kb = Keyboard()
 kb.typewrite("Hello Wayland!", interval=0.1)
+kb.press("enter")
 kb.hotkey("ctrl", "s")
 ```
 
@@ -70,8 +71,7 @@ kb.hotkey("ctrl", "s")
 from wayland_automation.mouse_controller import Mouse
 
 mouse = Mouse()
-mouse.move_to(500, 500)
-mouse.click()
+mouse.click(250, 300, "left")
 ```
 
 ### Cursor Tracking

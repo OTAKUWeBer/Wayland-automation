@@ -263,6 +263,41 @@ Usage:
     print(usage_text.strip())
 
 if __name__ == "__main__":
+    # Check if running in test mode (no arguments or "test" argument)
+    if len(sys.argv) == 1 or (len(sys.argv) == 2 and sys.argv[1].lower() == "test"):
+        print("Running in test mode...")
+        print("Initializing Mouse controller...")
+        
+        try:
+            ms = Mouse()
+            print("✓ Mouse controller initialized successfully")
+            
+            # Test 1: Simple click at position (100, 100)
+            print("\nTest 1: Clicking at position (100, 100) with left button")
+            ms.click(100, 100, "left")
+            print("✓ Click test completed")
+            
+            # Test 2: Move without clicking
+            print("\nTest 2: Moving to position (200, 200) without clicking")
+            ms.click(200, 200, "nothing")
+            print("✓ Move test completed")
+            
+            # Test 3: Right click
+            print("\nTest 3: Right clicking at position (150, 150)")
+            ms.click(150, 150, "right")
+            print("✓ Right click test completed")
+            
+            print("\n✓ All tests passed!")
+            
+        except Exception as e:
+            print(f"✗ Test failed with error: {e}")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+        
+        sys.exit(0)
+    
+    # Original command-line interface
     if len(sys.argv) < 2:
         print_usage()
         sys.exit(1)

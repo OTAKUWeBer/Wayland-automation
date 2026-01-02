@@ -1,32 +1,38 @@
 name: Publish Python Package
 
-# Trigger workflow only on version tags like v0.1.5
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
 
 jobs:
   publish:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout your repo
-      - uses: actions/checkout@v3
+      # 1️⃣ Checkout repository
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       # 2️⃣ Set up Python
-      - uses: actions/setup-python@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: "3.x"
 
-      # 3️⃣ Install build & twine
-      - run: pip install --upgrade build twine
+      # 3️⃣ Install build tools
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade build twine
 
-      # 4️⃣ Build and upload
-      - name: Build & Publish to PyPI
+      # 4️⃣ Build package
+      - name: Build package
+        run: python -m build
+
+      # 5️⃣ Publish to PyPI
+      - name: Publish to PyPI
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: |
-          python -m build
-          python -m twine upload dist/*
+        run: python -m twine upload dist/*

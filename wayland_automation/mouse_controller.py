@@ -78,43 +78,60 @@ class Mouse:
         return object_id, opcode, message_data
 
     def handle_events(self):
-        while True:
-            object_id, opcode, message_data = self.receive_message()
-            if object_id is None or opcode is None or message_data is None:
-                break
+        # Set socket to non-blocking to drain all available messages
+        self.sock.setblocking(False)
+        callback_done = False
+        
+        try:
+            while True:
+                try:
+                    object_id, opcode, message_data = self.receive_message()
+                    if object_id is None or opcode is None or message_data is None:
+                        break
 
-            if object_id == 1:
-                log(f"Received event from wl_display: {opcode}")
+                    if object_id == 1:
+                        log(f"Received event from wl_display: {opcode}")
 
-            if object_id == self.wl_registry_id and opcode == 0:
-                global_name = struct.unpack(f"{self.endianness}I", message_data[:4])[0]
-                name_offset = 4
-                string_size = struct.unpack(
-                    f"{self.endianness}I", message_data[name_offset : name_offset + 4]
-                )[0]
-                interface_name = message_data[
-                    name_offset + 4 : name_offset + 4 + string_size - 1
-                ].decode("utf-8")
-                version = struct.unpack(f"{self.endianness}I", message_data[-4:])[0]
-                log(
-                    f"Discovered global: {interface_name} (name {global_name}, version {version})"
-                )
-                if interface_name == "zwlr_virtual_pointer_manager_v1":
-                    payload = (
-                        struct.pack(f"{self.endianness}I", global_name)
-                        + encode_wayland_string(interface_name)
-                        + struct.pack(
-                            f"{self.endianness}II",
-                            version,
-                            self.virtual_pointer_manager_id,
+                    if object_id == self.wl_registry_id and opcode == 0:
+                        global_name = struct.unpack(f"{self.endianness}I", message_data[:4])[0]
+                        name_offset = 4
+                        string_size = struct.unpack(
+                            f"{self.endianness}I", message_data[name_offset : name_offset + 4]
+                        )[0]
+                        interface_name = message_data[
+                            name_offset + 4 : name_offset + 4 + string_size - 1
+                        ].decode("utf-8")
+                        version = struct.unpack(f"{self.endianness}I", message_data[-4:])[0]
+                        log(
+                            f"Discovered global: {interface_name} (name {global_name}, version {version})"
                         )
-                    )
-                    self.send_message(self.wl_registry_id, 0, payload)
-                    log("Sent zwlr_virtual_pointer_manager_v1.bind() request...")
+                        if interface_name == "zwlr_virtual_pointer_manager_v1":
+                            payload = (
+                                struct.pack(f"{self.endianness}I", global_name)
+                                + encode_wayland_string(interface_name)
+                                + struct.pack(
+                                    f"{self.endianness}II",
+                                    version,
+                                    self.virtual_pointer_manager_id,
+                                )
+                            )
+                            self.send_message(self.wl_registry_id, 0, payload)
+                            log("Sent zwlr_virtual_pointer_manager_v1.bind() request...")
 
-            elif object_id == self.callback_id and opcode == 0:
-                log("Received wl_callback.done event.")
-                break
+                    elif object_id == self.callback_id and opcode == 0:
+                        log("Received wl_callback.done event.")
+                        callback_done = True
+                        
+                except BlockingIOError:
+                    # No more messages available
+                    if callback_done:
+                        break
+                    # If callback not done yet, wait a bit and retry
+                    time.sleep(0.001)
+                    
+        finally:
+            # Restore blocking mode
+            self.sock.setblocking(True)
 
     def create_virtual_pointer(self):
         new_pointer_id = self.next_id

@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="wayland_automation",
-    version="0.2.1",
+    version="0.2.2",
     description="A tool for automating Wayland tasks using system packages wtype and wayland-info",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",

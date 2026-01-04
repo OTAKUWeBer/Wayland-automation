@@ -5,15 +5,23 @@ import sys
 import time
 from wayland_automation.utils.screen_resolution import get_resolution
 
-logging = False
+# Configure logging
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
 
 # Define button constants
 BUTTON_LEFT = 0x110
 BUTTON_RIGHT = 0x111
 
-def log(message):
-    if logging:
-        print(message)
+class WaylandProtocolError(Exception):
+    """Exception raised when a required Wayland protocol is not available."""
+    pass
+
+class WaylandConnectionError(Exception):
+    """Exception raised when connection to Wayland fails."""
+    pass
 
 def encode_wayland_string(s: str) -> bytes:
     if s is None:
@@ -26,20 +34,41 @@ def encode_wayland_string(s: str) -> bytes:
 
 class Mouse:
     def __init__(self):
-        self.socket_path = self.get_socket_path()
-        self.sock = self.connect_to_wayland()
+        try:
+            self.socket_path = self.get_socket_path()
+            self.sock = self.connect_to_wayland()
+        except Exception as e:
+            raise WaylandConnectionError(f"Failed to connect to Wayland: {e}")
+
         self.endianness = "<" if sys.byteorder == "little" else ">"
         self.wl_registry_id = 2
         self.callback_id = 3
         self.virtual_pointer_manager_id = 4
         self.next_id = 5  # Start assigning new IDs from here
         self.current_virtual_pointer_id = None
+        
+        self.protocols_found = []
+        self.virtual_pointer_manager_bound = False
 
         # Perform initial setup
-        self.send_registry_request()
-        self.send_sync_request()
-        self.handle_events()  # Binds the virtual pointer manager
-        self.create_virtual_pointer()
+        try:
+            self.send_registry_request()
+            self.send_sync_request()
+            self.handle_events()  # Binds the virtual pointer manager
+            
+            if not self.virtual_pointer_manager_bound:
+                supported_compositors = "wlroots-based (Sway, Hyprland, etc.)"
+                raise WaylandProtocolError(
+                    f"Protocol 'zwlr_virtual_pointer_manager_v1' not found. "
+                    f"This library currently requires {supported_compositors}. "
+                    "KDE Plasma support is planned for version 6.5 via 'pointer-warp-v1'."
+                )
+                
+            self.create_virtual_pointer()
+        except Exception as e:
+            if self.sock:
+                self.sock.close()
+            raise e
 
     def get_socket_path(self):
         wayland_display = os.getenv("WAYLAND_DISPLAY", "wayland-0")
@@ -48,24 +77,30 @@ class Mouse:
     def connect_to_wayland(self):
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.connect(self.socket_path)
-        log(f"Connected to Wayland server at {self.socket_path}")
+        logger.info(f"Connected to Wayland server at {self.socket_path}")
         return sock
 
     def send_message(self, object_id, opcode, payload):
+        if object_id is None:
+            return
         message_size = 8 + len(payload)
         message = (
             struct.pack(f"{self.endianness}IHH", object_id, opcode, message_size)
             + payload
         )
-        self.sock.sendall(message)
+        try:
+            self.sock.sendall(message)
+        except BrokenPipeError:
+            logger.error("SIGPIPE detected: Wayland connection closed unexpectedly.")
+            sys.exit(1)
 
     def send_registry_request(self):
         self.send_message(1, 1, struct.pack(f"{self.endianness}I", self.wl_registry_id))
-        log("Sent wl_display.get_registry() request...")
+        logger.debug("Sent wl_display.get_registry() request...")
 
     def send_sync_request(self):
         self.send_message(1, 0, struct.pack(f"{self.endianness}I", self.callback_id))
-        log("Sent wl_display.sync() request...")
+        logger.debug("Sent wl_display.sync() request...")
 
     def receive_message(self):
         header = self.sock.recv(8)
@@ -85,12 +120,13 @@ class Mouse:
         try:
             while True:
                 try:
-                    object_id, opcode, message_data = self.receive_message()
-                    if object_id is None or opcode is None or message_data is None:
+                    result = self.receive_message()
+                    if result is None or result[0] is None:
                         break
+                    object_id, opcode, message_data = result
 
                     if object_id == 1:
-                        log(f"Received event from wl_display: {opcode}")
+                        logger.debug(f"Received event from wl_display: {opcode}")
 
                     if object_id == self.wl_registry_id and opcode == 0:
                         global_name = struct.unpack(f"{self.endianness}I", message_data[:4])[0]
@@ -102,7 +138,9 @@ class Mouse:
                             name_offset + 4 : name_offset + 4 + string_size - 1
                         ].decode("utf-8")
                         version = struct.unpack(f"{self.endianness}I", message_data[-4:])[0]
-                        log(
+                        
+                        self.protocols_found.append(interface_name)
+                        logger.debug(
                             f"Discovered global: {interface_name} (name {global_name}, version {version})"
                         )
                         if interface_name == "zwlr_virtual_pointer_manager_v1":
@@ -116,10 +154,11 @@ class Mouse:
                                 )
                             )
                             self.send_message(self.wl_registry_id, 0, payload)
-                            log("Sent zwlr_virtual_pointer_manager_v1.bind() request...")
+                            self.virtual_pointer_manager_bound = True
+                            logger.info("Bound to zwlr_virtual_pointer_manager_v1")
 
                     elif object_id == self.callback_id and opcode == 0:
-                        log("Received wl_callback.done event.")
+                        logger.debug("Received wl_callback.done event.")
                         callback_done = True
                         
                 except BlockingIOError:

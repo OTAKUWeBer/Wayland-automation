@@ -2,6 +2,30 @@
 
 A powerful, modular Python library for Wayland automation, supporting mouse and keyboard control across various compositors (Hyprland, wlroots, etc.).
 
+## Compatibility
+
+This library currently relies on the **wlroots**-specific protocol `zwlr_virtual_pointer_manager_v1` for mouse positioning.
+
+| Compositor | Mouse Support | Notes |
+|------------|---------------|-------|
+| Hyprland   | ✅ Full       | Wlroots-based |
+| Sway       | ✅ Full       | Wlroots-based |
+| KDE Plasma | ❌ Limited    | Keyboard works via `wtype`. Mouse support expected in KDE 6.5 via `pointer-warp-v1`. |
+| GNOME      | ❌ Limited    | Keyboard works via `wtype`. Mouse support requires specific GNOME shell extensions or future protocols. |
+
+## Troubleshooting
+
+### SIGPIPE / Broken Pipe
+If you encounter a `BrokenPipeError` or SIGPIPE, it often means the Wayland compositor disconnected the client because it attempted to use an unsupported protocol or performed an invalid operation.
+
+### Protocol Not Found
+If the library raises a `WaylandProtocolError`, your compositor does not support the required virtual pointer protocol. 
+
+## Roadmap
+- [ ] Support for KDE 6.5+ `pointer-warp-v1` protocol.
+- [ ] Improved error handling for unsupported compositors.
+
+
 ## Features
 
 - **Mouse Control**: Move, click, and drag with compositor-aware positioning.

@@ -1,27 +1,29 @@
 #!/usr/bin/env python3
 """
-wayland_cursor_watch.py
+mouse_position.py — Multi-backend cursor position tracker for Wayland.
 
-Multi-backend compositor-aware cursor watcher for Wayland systems.
+Automatically selects the best available backend for your compositor:
 
-Backends tried (in order):
- - Hyprland via `hyprctl cursorpos`
- - wlroots via `wl-find-cursor` (if installed)
- - XWayland via `xdotool getmouselocation --shell` (if DISPLAY present)
- - evdev relative-integration fallback (requires access to /dev/input/event*)
+  1. Hyprland — via ``hyprctl cursorpos``
+  2. wlroots  — via ``wl-find-cursor`` (Sway, River, etc.)
+  3. XWayland — via ``xdotool`` (if DISPLAY is set)
+  4. evdev    — relative-motion integration fallback (needs /dev/input access)
 
-Usage:
-    from wayland_cursor_watch import mouse_position_generator
-    for x, y in mouse_position_generator():
-        print(f"Mouse at: {x}, {y}")
+Usage::
+
+    from wayland_automation import mouse_position_generator
+
+    for x, y in mouse_position_generator(interval=0.1):
+        print(f"Cursor at: ({x}, {y})")
+
+CLI::
+
+    python -m wayland_automation.mouse_position          # default 0.2s interval
+    python -m wayland_automation.mouse_position 0.5      # custom interval
 
 Dependencies:
- - Python packages: evdev (only needed for the evdev fallback)
-     pip install evdev
- - Optional binaries (used automatically if present):
-     - hyprctl (Hyprland)
-     - wl-find-cursor (wlroots tool)
-     - xdotool (XWayland/X11)
+  - Python: ``evdev`` (only for the evdev fallback — ``pip install evdev``)
+  - System: ``hyprctl`` | ``wl-find-cursor`` | ``xdotool`` (auto-detected)
 """
 
 import os

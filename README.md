@@ -1,123 +1,226 @@
 # Wayland Automation
 
-A powerful, modular Python library for Wayland automation, supporting mouse and keyboard control across various compositors (Hyprland, wlroots, etc.).
+[![PyPI version](https://img.shields.io/pypi/v/wayland-automation.svg)](https://pypi.org/project/wayland-automation/)
+[![Python 3.6+](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENCE)
 
-## Compatibility
-
-This library currently relies on the **wlroots**-specific protocol `zwlr_virtual_pointer_manager_v1` for mouse positioning.
-
-| Compositor | Mouse Support | Notes |
-|------------|---------------|-------|
-| Hyprland   | ✅ Full       | Wlroots-based |
-| Sway       | ✅ Full       | Wlroots-based |
-| KDE Plasma | ❌ Limited    | Keyboard works via `wtype`. Mouse support expected in KDE 6.5 via `pointer-warp-v1`. |
-| GNOME      | ❌ Limited    | Keyboard works via `wtype`. Mouse support requires specific GNOME shell extensions or future protocols. |
-
-## Troubleshooting
-
-### SIGPIPE / Broken Pipe
-If you encounter a `BrokenPipeError` or SIGPIPE, it often means the Wayland compositor disconnected the client because it attempted to use an unsupported protocol or performed an invalid operation.
-
-### Protocol Not Found
-If the library raises a `WaylandProtocolError`, your compositor does not support the required virtual pointer protocol. 
-
-## Roadmap
-- [ ] Support for KDE 6.5+ `pointer-warp-v1` protocol.
-- [ ] Improved error handling for unsupported compositors.
-
+A Python library for **mouse and keyboard automation** on Wayland compositors.
+Works out of the box on **Hyprland, Sway**, and other **wlroots-based** compositors.
 
 ## Features
 
-- **Mouse Control**: Move, click, and drag with compositor-aware positioning.
-- **Keyboard Control**: Type text, press keys, and handle complex hotkeys via `wtype`.
-- **Compositor Support**: Multiple backends for cursor tracking (Hyprland, wl-find-cursor, XWayland, and evdev fallback).
-- **Resilient Connections**: Built-in reconnection logic for Wayland sockets to handle session resets.
+- **Mouse** — click, move, swipe (drag), and auto-click at any screen coordinate
+- **Keyboard** — type text, press individual keys, and trigger hotkeys (e.g. `Ctrl+S`)
+- **Cursor Tracking** — real-time cursor position via multiple backends (Hyprland → wl-find-cursor → xdotool → evdev)
+- **Convenience API** — top-level functions so you can `import wayland_automation as wa` and go
+- **Resilient** — automatic reconnection logic for Wayland socket resets
+
+---
 
 ## Installation
 
-### 1. Python Package
+### 1. Install the package
 
 ```bash
 pip install wayland-automation
 ```
 
-### 2. System Dependencies
+### 2. Install system dependencies
 
-Wayland Automation requires specific system tools depending on your environment and compositor.
+| Dependency | What it does | Install command |
+|---|---|---|
+| `wtype` | **Required** — keyboard automation | `sudo pacman -S wtype` (Arch) / `sudo apt install wtype` (Debian) / `sudo dnf install wtype` (Fedora) |
+| `wayland-utils` | Screen resolution detection | `sudo pacman -S wayland-utils` (Arch) / `sudo apt install wayland-utils` (Debian) |
 
-#### Core Wayland Tools
-- **Arch Linux**: `sudo pacman -S wayland-utils`
-- **Ubuntu/Debian**: `sudo apt install wayland-utils`
+#### Mouse-tracking backends (pick the one for your compositor)
 
-#### Keyboard Support (Required)
-You must install `wtype` for keyboard automation:
-- **Arch Linux**: `sudo pacman -S wtype`
-- **Ubuntu/Debian**: `sudo apt install wtype`
-- **Fedora**: `sudo dnf install wtype`
+The library auto-detects the best backend. You only need to install the one that matches your setup:
 
-#### Mouse Tracking Backends
-The library automatically picks the best available backend for your compositor:
+| Backend | Compositor | Install |
+|---|---|---|
+| `hyprctl` | Hyprland | Pre-installed with Hyprland |
+| `wl-find-cursor` | Sway / wlroots | See [build from source](#building-wl-find-cursor-from-source) below |
+| `xdotool` | XWayland apps | `sudo pacman -S xdotool` / `sudo apt install xdotool` |
+| `evdev` (fallback) | Any | `pip install evdev` + add user to `input` group (see below) |
 
-1. **Hyprland**: Requires `hyprctl` (pre-installed with Hyprland).
-2. **wlroots (Sway, River, etc.)**: Requires `wl-find-cursor`.
-   - **Arch Linux**: `sudo pacman -S wl-find-cursor` (if available in AUR/Repo)
-   - **Ubuntu/Debian**: `sudo apt install wl-find-cursor`
-   - **From Source**:
-     ```bash
-     git clone https://github.com/cjacker/wl-find-cursor.git
-     cd wl-find-cursor
-     make
-     sudo cp wl-find-cursor /usr/local/bin/
-     ```
-3. **XWayland**: Requires `xdotool` if you are automating XWayland applications.
-4. **Generic Fallback**: Uses `evdev`. Requires your user to be in the `input` group:
-   ```bash
-   sudo usermod -aG input $USER
-   ```
-   *Note: Log out and back in for group changes to take effect.*
+<details>
+<summary><strong>Building wl-find-cursor from source</strong></summary>
+
+```bash
+git clone https://github.com/cjacker/wl-find-cursor.git
+cd wl-find-cursor
+make
+sudo cp wl-find-cursor /usr/local/bin/
+```
+
+</details>
+
+<details>
+<summary><strong>Setting up evdev fallback</strong></summary>
+
+```bash
+sudo usermod -aG input $USER
+# Log out and back in for the group change to take effect
+```
+
+</details>
+
+---
 
 ## Quick Start
 
-### Keyboard Control
+### Top-level convenience API
+
+The simplest way to use the library — no class instantiation needed:
 
 ```python
-from wayland_automation.keyboard_controller import Keyboard
+import wayland_automation as wa
 
-kb = Keyboard()
-kb.typewrite("Hello Wayland!", interval=0.1)
-kb.press("enter")
-kb.hotkey("ctrl", "s")
+# Mouse
+wa.click(250, 300, "left")                # left-click at (250, 300)
+wa.click(400, 500, "right")               # right-click
+wa.swipe(100, 200, 800, 200)              # drag from point A to B
+wa.auto_click(initial_delay=2, interval=0.1, duration=5)  # auto-clicker
+
+# Keyboard
+wa.typewrite("Hello Wayland!", interval=0.05)  # type text character by character
+wa.press("enter")                              # press a single key
+wa.hotkey("ctrl", "s")                         # key combination
 ```
 
-### Mouse Control
+### Using the classes directly
+
+For more control, instantiate `Mouse` or `Keyboard`:
 
 ```python
-from wayland_automation.mouse_controller import Mouse
+from wayland_automation import Mouse, Keyboard
 
 mouse = Mouse()
-mouse.click(250, 300, "left")
+mouse.click(250, 300, "left")       # left-click at (250, 300)
+mouse.click(600, 400, "nothing")    # move cursor without clicking
+mouse.swipe(0, 500, 1000, 500, speed=0.5)  # fast swipe (0.5 s)
+
+kb = Keyboard()
+kb.typewrite("Hello!", interval=0.05)
+kb.press("enter")
+kb.hotkey("ctrl", "a")              # select all
+kb.keyDown("shift")                 # hold shift
+kb.keyUp("shift")                   # release shift
 ```
 
 ### Cursor Tracking
 
+Stream real-time cursor coordinates:
+
 ```python
-from wayland_automation.mouse_position import mouse_position_generator
+from wayland_automation import mouse_position_generator
 
 for x, y in mouse_position_generator(interval=0.1):
-    print(f"Mouse is at: {x}, {y}")
+    print(f"Cursor at: ({x}, {y})")
+    # break whenever you want to stop
 ```
+
+---
+
+## CLI Usage
+
+After installing the package, a `wayland-automation` command is available:
+
+```bash
+wayland-automation          # prints status
+```
+
+You can also run the individual modules directly:
+
+```bash
+# Mouse — click at (x, y)
+python -m wayland_automation.mouse_controller click 250 300 left
+
+# Mouse — swipe
+python -m wayland_automation.mouse_controller swipe 100 200 800 200
+
+# Mouse — auto-click (delay interval duration button)
+python -m wayland_automation.mouse_controller autoclick 3 0.1 10 left
+
+# Mouse — run built-in test
+python -m wayland_automation.mouse_controller test
+
+# Cursor position watcher
+python -m wayland_automation.mouse_position
+```
+
+---
+
+## API Reference
+
+### `wayland_automation.click(x, y, button=None)`
+Move the pointer to **(x, y)**. If `button` is given (`"left"`, `"right"`, or `"nothing"`), perform a click.
+
+### `wayland_automation.swipe(start_x, start_y, end_x, end_y, speed="normal")`
+Drag from one point to another. `speed` is duration in seconds (`"normal"` = 1.0 s).
+
+### `wayland_automation.auto_click(initial_delay, interval, duration, button)`
+Wait `initial_delay` seconds, then click every `interval` seconds for `duration` seconds.
+
+### `wayland_automation.typewrite(text, interval=0)`
+Type `text` one character at a time with an optional delay between characters.
+
+### `wayland_automation.press(key)`
+Press and release a single key (e.g. `"enter"`, `"tab"`, `"backspace"`, `"space"`).
+
+### `wayland_automation.hotkey(*keys)`
+Press a key combination (e.g. `hotkey("ctrl", "shift", "t")`). Modifier keys: `ctrl`, `alt`, `shift`, `super`.
+
+### `wayland_automation.mouse_position_generator(interval=0.2, print_output=False)`
+Generator yielding `(x, y)` tuples of the current cursor position.
+
+---
+
+## Compositor Compatibility
+
+| Compositor | Mouse | Keyboard | Cursor Tracking | Notes |
+|---|---|---|---|---|
+| **Hyprland** | ✅ | ✅ | ✅ `hyprctl` | Full support (wlroots-based) |
+| **Sway** | ✅ | ✅ | ✅ `wl-find-cursor` | Full support (wlroots-based) |
+| **KDE Plasma** | ❌ | ✅ via `wtype` | ❌ | Mouse planned for KDE 6.5 (`pointer-warp-v1`) |
+| **GNOME** | ❌ | ✅ via `wtype` | ❌ | Requires future protocol support |
+
+---
+
+## Troubleshooting
+
+| Problem | Likely cause | Fix |
+|---|---|---|
+| `BrokenPipeError` / SIGPIPE | Compositor disconnected the client | Ensure you are on a supported compositor and the protocol is available |
+| `WaylandProtocolError` | `zwlr_virtual_pointer_manager_v1` not supported | Switch to a wlroots-based compositor (Hyprland / Sway) |
+| `wtype` not found | System dependency missing | Install `wtype` (see [Installation](#2-install-system-dependencies)) |
+| Cursor tracking returns nothing | No backend available | Install the backend matching your compositor (see table above) |
+
+---
 
 ## Architecture
 
-The project is structured into modular components:
-- `mouse_controller.py`: Low-level Wayland socket communication for virtual pointer events.
-- `keyboard_controller.py`: Wrapper around `wtype` for keyboard input.
-- `mouse_position.py`: Multi-backend orchestrator for retrieving current cursor coordinates.
+```
+wayland_automation/
+├── __init__.py             # Public API & convenience functions
+├── __main__.py             # CLI entry point, dependency checks
+├── mouse_controller.py     # Wayland socket communication for virtual pointer
+├── keyboard_controller.py  # Keyboard automation via wtype
+├── mouse_position.py       # Multi-backend cursor position tracking
+└── utils/
+    └── screen_resolution.py  # Screen resolution detection
+```
+
+## Roadmap
+
+- [ ] KDE Plasma 6.5+ `pointer-warp-v1` protocol support
+- [ ] Improved error messages for unsupported compositors
+- [ ] Scroll wheel support
 
 ## Contributing
 
-We welcome contributions! Please see `CONTRIBUTING.md` for guidelines on submitting pull requests and code style.
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-This project is licensed under the [MIT Licence](LICENCE) - see the LICENSE file for details.
+[MIT License](LICENCE)

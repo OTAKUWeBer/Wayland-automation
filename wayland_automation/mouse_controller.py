@@ -1,3 +1,28 @@
+"""
+mouse_controller.py — Low-level Wayland virtual pointer control.
+
+Provides the ``Mouse`` class for moving, clicking, swiping, and auto-clicking
+at absolute screen coordinates via the ``zwlr_virtual_pointer_manager_v1``
+protocol (wlroots-based compositors: Hyprland, Sway, …).
+
+Usage::
+
+    from wayland_automation import Mouse
+
+    mouse = Mouse()
+    mouse.click(250, 300, "left")                  # left-click
+    mouse.click(600, 400, "nothing")               # move only
+    mouse.swipe(100, 200, 800, 200)                # drag gesture
+    mouse.auto_click(initial_delay=2, interval=0.1, duration=5)
+
+CLI::
+
+    python -m wayland_automation.mouse_controller click 250 300 left
+    python -m wayland_automation.mouse_controller swipe 100 200 800 200
+    python -m wayland_automation.mouse_controller autoclick 3 0.1 10 left
+    python -m wayland_automation.mouse_controller test
+"""
+
 import os
 import socket
 import struct
@@ -306,15 +331,32 @@ class Mouse:
 
 def print_usage():
     usage_text = """
+Wayland Automation — Mouse Controller
+
 Usage:
-  For click (default mode): 
-      python mouse_controller.py <x> <y> [<button>]
-  For explicit click mode: 
-      python mouse_controller.py click <x> <y> [<button>]
-  For swipe: 
-      python mouse_controller.py swipe <start_x> <start_y> <end_x> <end_y> [<speed>]
-  For auto-click: 
-      python mouse_controller.py autoclick [<initial_delay> <interval> <duration> <button>]
+  Click (move + click):
+      python -m wayland_automation.mouse_controller click <x> <y> [<button>]
+      python -m wayland_automation.mouse_controller <x> <y> [<button>]
+
+  Move only (no click):
+      python -m wayland_automation.mouse_controller <x> <y> nothing
+
+  Swipe (drag gesture):
+      python -m wayland_automation.mouse_controller swipe <start_x> <start_y> <end_x> <end_y> [<speed>]
+
+  Auto-click (repeated clicks at cursor position):
+      python -m wayland_automation.mouse_controller autoclick [<delay> <interval> <duration> <button>]
+
+  Run built-in test:
+      python -m wayland_automation.mouse_controller test
+
+Arguments:
+  <x>, <y>       Screen coordinates (integers)
+  <button>       "left", "right", or "nothing" (default: left)
+  <speed>        Swipe duration in seconds (default: "normal" = 1.0s)
+  <delay>        Seconds to wait before auto-click starts (default: 3.0)
+  <interval>     Seconds between clicks (default: 0.1)
+  <duration>     Total auto-click duration in seconds (default: 10.0)
 """
     print(usage_text.strip())
 

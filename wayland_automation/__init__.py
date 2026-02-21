@@ -1,6 +1,21 @@
+"""
+Wayland Automation — A Python library for automating mouse and keyboard
+input on Wayland compositors (Hyprland, Sway, and other wlroots-based).
+
+Quick start::
+
+    import wayland_automation as wa
+
+    wa.click(250, 300, "left")          # click at coordinates
+    wa.typewrite("Hello!", interval=0.05)  # type text
+    wa.hotkey("ctrl", "s")              # keyboard shortcut
+"""
+
 from .mouse_controller import Mouse, print_usage
 from .mouse_position import mouse_position_generator
 from .keyboard_controller import Keyboard
+
+__version__ = "0.2.7"
 
 __all__ = [
     "__version__",

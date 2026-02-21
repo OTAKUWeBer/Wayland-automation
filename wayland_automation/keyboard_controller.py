@@ -1,3 +1,21 @@
+"""
+keyboard_controller.py — Keyboard automation for Wayland via ``wtype``.
+
+Provides the ``Keyboard`` class for typing text, pressing keys, and
+triggering hotkey combinations on any Wayland compositor that supports wtype.
+
+Usage::
+
+    from wayland_automation import Keyboard
+
+    kb = Keyboard()
+    kb.typewrite("Hello Wayland!", interval=0.05)
+    kb.press("enter")
+    kb.hotkey("ctrl", "s")
+
+Requires ``wtype`` to be installed (see README for install instructions).
+"""
+
 import subprocess
 import time
 

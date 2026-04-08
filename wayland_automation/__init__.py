@@ -1,6 +1,10 @@
 """
 Wayland Automation — A Python library for automating mouse and keyboard
-input on Wayland compositors (Hyprland, Sway, and other wlroots-based).
+input on Wayland compositors.
+
+Supported compositors:
+  - **wlroots-based** (Hyprland, Sway, …) via ``zwlr_virtual_pointer_manager_v1``
+  - **KDE Plasma / KWin** via ``org_kde_kwin_fake_input``
 
 Quick start::
 

@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENCE)
 
 A Python library for **mouse and keyboard automation** on Wayland compositors.
-Works out of the box on **Hyprland, Sway**, and other **wlroots-based** compositors.
+Works out of the box on **Hyprland, Sway** (wlroots-based), and **KDE Plasma / KWin**.
 
 ## Features
 
@@ -182,7 +182,7 @@ Generator yielding `(x, y)` tuples of the current cursor position.
 |---|---|---|---|---|
 | **Hyprland** | ✅ | ✅ | ✅ `hyprctl` | Full support (wlroots-based) |
 | **Sway** | ✅ | ✅ | ✅ `wl-find-cursor` | Full support (wlroots-based) |
-| **KDE Plasma** | ❌ | ✅ via `wtype` | ❌ | Mouse planned for KDE 6.5 (`pointer-warp-v1`) |
+| **KDE Plasma** | ✅ `org_kde_kwin_fake_input` | ✅ via `wtype` | ⚠️ `xdotool` / `evdev` | Mouse via native KDE protocol (no sudo needed) |
 | **GNOME** | ❌ | ✅ via `wtype` | ❌ | Requires future protocol support |
 
 ---
@@ -192,9 +192,10 @@ Generator yielding `(x, y)` tuples of the current cursor position.
 | Problem | Likely cause | Fix |
 |---|---|---|
 | `BrokenPipeError` / SIGPIPE | Compositor disconnected the client | Ensure you are on a supported compositor and the protocol is available |
-| `WaylandProtocolError` | `zwlr_virtual_pointer_manager_v1` not supported | Switch to a wlroots-based compositor (Hyprland / Sway) |
+| `WaylandProtocolError` | Neither `zwlr_virtual_pointer_manager_v1` nor `org_kde_kwin_fake_input` found | Switch to a supported compositor (Hyprland, Sway, KDE Plasma) |
 | `wtype` not found | System dependency missing | Install `wtype` (see [Installation](#2-install-system-dependencies)) |
 | Cursor tracking returns nothing | No backend available | Install the backend matching your compositor (see table above) |
+| KDE mouse not working | `org_kde_kwin_fake_input` version < 3 | Upgrade to KDE Plasma 5.27+ / KDE Frameworks 5.x+ |
 
 ---
 
@@ -213,7 +214,8 @@ wayland_automation/
 
 ## Roadmap
 
-- [ ] KDE Plasma 6.5+ `pointer-warp-v1` protocol support
+- [x] KDE Plasma `org_kde_kwin_fake_input` protocol support
+- [ ] KDE Plasma native cursor tracking
 - [ ] Improved error messages for unsupported compositors
 - [ ] Scroll wheel support
 

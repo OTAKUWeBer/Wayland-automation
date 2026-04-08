@@ -2,8 +2,12 @@
 mouse_controller.py — Low-level Wayland virtual pointer control.
 
 Provides the ``Mouse`` class for moving, clicking, swiping, and auto-clicking
-at absolute screen coordinates via the ``zwlr_virtual_pointer_manager_v1``
-protocol (wlroots-based compositors: Hyprland, Sway, …).
+at absolute screen coordinates.  Supports two Wayland protocols:
+
+* ``zwlr_virtual_pointer_manager_v1`` — wlroots compositors (Hyprland, Sway, …)
+* ``org_kde_kwin_fake_input`` — KDE Plasma / KWin
+
+The backend is auto-detected at runtime; no sudo or external tools required.
 
 Usage::
 
@@ -40,6 +44,10 @@ logger = logging.getLogger(__name__)
 BUTTON_LEFT = 0x110
 BUTTON_RIGHT = 0x111
 
+# Backend identifiers
+BACKEND_WLROOTS = "wlroots"
+BACKEND_KDE = "kde"
+
 class WaylandProtocolError(Exception):
     """Exception raised when a required Wayland protocol is not available."""
     pass
@@ -56,6 +64,10 @@ def encode_wayland_string(s: str) -> bytes:
     padding_size = (4 - (length % 4)) % 4
     padding = b"\x00" * padding_size
     return struct.pack("<I", length) + encoded + padding
+
+def wl_fixed_from_double(value: float) -> int:
+    """Convert a float to Wayland fixed-point (24.8 signed, wl_fixed_t)."""
+    return int(value * 256)
 
 class Mouse:
     def __init__(self):
@@ -74,22 +86,31 @@ class Mouse:
         
         self.protocols_found = []
         self.virtual_pointer_manager_bound = False
+        self.kde_fake_input_bound = False
+        self.kde_fake_input_id = None
+        self.backend = None  # Will be set to BACKEND_WLROOTS or BACKEND_KDE
 
         # Perform initial setup
         try:
             self.send_registry_request()
             self.send_sync_request()
-            self.handle_events()  # Binds the virtual pointer manager
+            self.handle_events()  # Discovers and binds protocols
             
-            if not self.virtual_pointer_manager_bound:
-                supported_compositors = "wlroots-based (Sway, Hyprland, etc.)"
+            if self.virtual_pointer_manager_bound:
+                self.backend = BACKEND_WLROOTS
+                self.create_virtual_pointer()
+                logger.info("Using wlroots backend (zwlr_virtual_pointer_manager_v1)")
+            elif self.kde_fake_input_bound:
+                self.backend = BACKEND_KDE
+                self._kde_authenticate()
+                logger.info("Using KDE backend (org_kde_kwin_fake_input)")
+            else:
                 raise WaylandProtocolError(
-                    f"Protocol 'zwlr_virtual_pointer_manager_v1' not found. "
-                    f"This library currently requires {supported_compositors}. "
-                    "KDE Plasma support is planned for version 6.5 via 'pointer-warp-v1'."
+                    "No supported mouse protocol found. "
+                    "This library requires either "
+                    "'zwlr_virtual_pointer_manager_v1' (wlroots: Sway, Hyprland) "
+                    "or 'org_kde_kwin_fake_input' (KDE Plasma / KWin)."
                 )
-                
-            self.create_virtual_pointer()
         except Exception as e:
             if self.sock:
                 self.sock.close()
@@ -182,6 +203,24 @@ class Mouse:
                             self.virtual_pointer_manager_bound = True
                             logger.info("Bound to zwlr_virtual_pointer_manager_v1")
 
+                        elif interface_name == "org_kde_kwin_fake_input" and version >= 3:
+                            # KDE fake input — version 3+ needed for pointer_motion_absolute
+                            self.kde_fake_input_id = self.next_id
+                            self.next_id += 1
+                            bind_version = min(version, 5)  # cap at v5 (has destroy)
+                            payload = (
+                                struct.pack(f"{self.endianness}I", global_name)
+                                + encode_wayland_string(interface_name)
+                                + struct.pack(
+                                    f"{self.endianness}II",
+                                    bind_version,
+                                    self.kde_fake_input_id,
+                                )
+                            )
+                            self.send_message(self.wl_registry_id, 0, payload)
+                            self.kde_fake_input_bound = True
+                            logger.info(f"Bound to org_kde_kwin_fake_input v{bind_version}")
+
                     elif object_id == self.callback_id and opcode == 0:
                         logger.debug("Received wl_callback.done event.")
                         callback_done = True
@@ -198,6 +237,7 @@ class Mouse:
             self.sock.setblocking(True)
 
     def create_virtual_pointer(self):
+        """Create a wlroots virtual pointer object (wlroots backend only)."""
         new_pointer_id = self.next_id
         self.next_id += 1
         self.send_message(
@@ -207,26 +247,85 @@ class Mouse:
         )
         self.current_virtual_pointer_id = new_pointer_id
 
-    def send_motion_absolute(self, x, y, x_extent, y_extent):
-        payload = struct.pack(f"{self.endianness}IIIII", 0, x, y, x_extent, y_extent)
-        self.send_message(self.current_virtual_pointer_id, 1, payload)
-        # Send frame event after motion
-        self.send_message(self.current_virtual_pointer_id, 4, b'')
+    # ---- KDE fake-input helpers ----
+
+    def _kde_authenticate(self):
+        """Send authenticate request to KDE fake input (opcode 0)."""
+        payload = (
+            encode_wayland_string("wayland-automation")
+            + encode_wayland_string("Mouse and keyboard automation library")
+        )
+        self.send_message(self.kde_fake_input_id, 0, payload)
+        logger.debug("Sent KDE fake input authenticate request")
+
+    def _kde_motion_absolute(self, x, y):
+        """Send absolute pointer motion via KDE fake input (opcode 9, since v3)."""
+        x_fixed = wl_fixed_from_double(float(x))
+        y_fixed = wl_fixed_from_double(float(y))
+        payload = struct.pack(f"{self.endianness}ii", x_fixed, y_fixed)
+        self.send_message(self.kde_fake_input_id, 9, payload)
+
+    def _kde_button(self, button, state):
+        """Send button event via KDE fake input (opcode 2)."""
+        payload = struct.pack(f"{self.endianness}II", button, state)
+        self.send_message(self.kde_fake_input_id, 2, payload)
+
+    # ---- Backend-dispatching methods ----
+
+    def send_motion_absolute(self, x, y, x_extent=None, y_extent=None):
+        """Move the pointer to absolute coordinates (dispatches by backend)."""
+        if self.backend == BACKEND_WLROOTS:
+            if x_extent is None or y_extent is None:
+                raise ValueError("wlroots backend requires x_extent and y_extent")
+            payload = struct.pack(f"{self.endianness}IIIII", 0, x, y, x_extent, y_extent)
+            self.send_message(self.current_virtual_pointer_id, 1, payload)
+            # Send frame event after motion
+            self.send_message(self.current_virtual_pointer_id, 4, b'')
+        elif self.backend == BACKEND_KDE:
+            self._kde_motion_absolute(x, y)
         
     def send_click(self, button):
-        # Send press then release events for the given button, each followed by a frame.
-        self.send_message(
-            self.current_virtual_pointer_id, 
-            2, 
-            struct.pack(f"{self.endianness}III", 0, button, 1)
-        )
-        self.send_message(self.current_virtual_pointer_id, 4, b'')  # Frame after press
-        self.send_message(
-            self.current_virtual_pointer_id, 
-            2, 
-            struct.pack(f"{self.endianness}III", 0, button, 0)
-        )
-        self.send_message(self.current_virtual_pointer_id, 4, b'')  # Frame after release
+        """Send press+release for the given button (dispatches by backend)."""
+        if self.backend == BACKEND_WLROOTS:
+            self.send_message(
+                self.current_virtual_pointer_id, 
+                2, 
+                struct.pack(f"{self.endianness}III", 0, button, 1)
+            )
+            self.send_message(self.current_virtual_pointer_id, 4, b'')  # Frame after press
+            self.send_message(
+                self.current_virtual_pointer_id, 
+                2, 
+                struct.pack(f"{self.endianness}III", 0, button, 0)
+            )
+            self.send_message(self.current_virtual_pointer_id, 4, b'')  # Frame after release
+        elif self.backend == BACKEND_KDE:
+            self._kde_button(button, 1)  # press
+            self._kde_button(button, 0)  # release
+
+    def send_button_down(self, button):
+        """Send button press only (dispatches by backend)."""
+        if self.backend == BACKEND_WLROOTS:
+            self.send_message(
+                self.current_virtual_pointer_id,
+                2,
+                struct.pack(f"{self.endianness}III", 0, button, 1)
+            )
+            self.send_message(self.current_virtual_pointer_id, 4, b'')
+        elif self.backend == BACKEND_KDE:
+            self._kde_button(button, 1)
+
+    def send_button_up(self, button):
+        """Send button release only (dispatches by backend)."""
+        if self.backend == BACKEND_WLROOTS:
+            self.send_message(
+                self.current_virtual_pointer_id,
+                2,
+                struct.pack(f"{self.endianness}III", 0, button, 0)
+            )
+            self.send_message(self.current_virtual_pointer_id, 4, b'')
+        elif self.backend == BACKEND_KDE:
+            self._kde_button(button, 0)
 
     def click(self, x, y, button=None):
         """
@@ -273,12 +372,7 @@ class Mouse:
         # Move pointer to start position
         self.send_motion_absolute(start_x, start_y, int(height), int(width))
         # Send press (simulate left button down)
-        self.send_message(
-            self.current_virtual_pointer_id, 
-            2, 
-            struct.pack(f"{self.endianness}III", 0, BUTTON_LEFT, 1)
-        )
-        self.send_message(self.current_virtual_pointer_id, 4, b'')  # Frame after press
+        self.send_button_down(BUTTON_LEFT)
 
         steps = 20
         step_duration = duration / steps
@@ -291,12 +385,7 @@ class Mouse:
             time.sleep(step_duration)
 
         # Send release (simulate left button up)
-        self.send_message(
-            self.current_virtual_pointer_id, 
-            2, 
-            struct.pack(f"{self.endianness}III", 0, BUTTON_LEFT, 0)
-        )
-        self.send_message(self.current_virtual_pointer_id, 4, b'')  # Frame after release
+        self.send_button_up(BUTTON_LEFT)
         self.send_sync_request()
         self.handle_events()
 

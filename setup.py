@@ -12,6 +12,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         "evdev",
+        "jeepney",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

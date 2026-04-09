@@ -88,6 +88,8 @@ class Mouse:
         self.virtual_pointer_manager_bound = False
         self.kde_fake_input_bound = False
         self.kde_fake_input_id = None
+        self.portal_conn = None
+        self.session_path = None
         self.backend = None  # Will be set to BACKEND_WLROOTS or BACKEND_KDE
 
         # Perform initial setup
@@ -100,19 +102,12 @@ class Mouse:
                 self.backend = BACKEND_WLROOTS
                 self.create_virtual_pointer()
                 logger.info("Using wlroots backend (zwlr_virtual_pointer_manager_v1)")
-            elif self.kde_fake_input_bound:
-                self.backend = BACKEND_KDE
-                self._kde_authenticate()
-                logger.info("Using KDE backend (org_kde_kwin_fake_input)")
             else:
-                raise WaylandProtocolError(
-                    "No supported mouse protocol found. "
-                    "This library requires either "
-                    "'zwlr_virtual_pointer_manager_v1' (wlroots: Sway, Hyprland) "
-                    "or 'org_kde_kwin_fake_input' (KDE Plasma / KWin)."
-                )
+                self.backend = BACKEND_KDE
+                logger.info("Falling back to XDG Desktop Portal RemoteDesktop backend via D-Bus")
+                self._kde_authenticate_portal()
         except Exception as e:
-            if self.sock:
+            if getattr(self, 'sock', None):
                 self.sock.close()
             raise e
 
@@ -203,23 +198,9 @@ class Mouse:
                             self.virtual_pointer_manager_bound = True
                             logger.info("Bound to zwlr_virtual_pointer_manager_v1")
 
-                        elif interface_name == "org_kde_kwin_fake_input" and version >= 3:
-                            # KDE fake input — version 3+ needed for pointer_motion_absolute
-                            self.kde_fake_input_id = self.next_id
-                            self.next_id += 1
-                            bind_version = min(version, 5)  # cap at v5 (has destroy)
-                            payload = (
-                                struct.pack(f"{self.endianness}I", global_name)
-                                + encode_wayland_string(interface_name)
-                                + struct.pack(
-                                    f"{self.endianness}II",
-                                    bind_version,
-                                    self.kde_fake_input_id,
-                                )
-                            )
-                            self.send_message(self.wl_registry_id, 0, payload)
-                            self.kde_fake_input_bound = True
-                            logger.info(f"Bound to org_kde_kwin_fake_input v{bind_version}")
+                        elif interface_name == "org_kde_kwin_fake_input":
+                            # We found the legacy protocol, but we ignore it and use Portal.
+                            logger.info("Found legacy org_kde_kwin_fake_input but ignoring in favor of Portal")
 
                     elif object_id == self.callback_id and opcode == 0:
                         logger.debug("Received wl_callback.done event.")
@@ -247,28 +228,121 @@ class Mouse:
         )
         self.current_virtual_pointer_id = new_pointer_id
 
-    # ---- KDE fake-input helpers ----
+    # ---- KDE Portal (RemoteDesktop) helpers ----
 
-    def _kde_authenticate(self):
-        """Send authenticate request to KDE fake input (opcode 0)."""
-        payload = (
-            encode_wayland_string("wayland-automation")
-            + encode_wayland_string("Mouse and keyboard automation library")
+    def _wait_for_response(self, request_path):
+        """Wait for the Response signal from the given Request object path."""
+        from jeepney import MatchRule
+        rule = MatchRule(
+            type="signal",
+            interface="org.freedesktop.portal.Request",
+            member="Response",
+            path=request_path
         )
-        self.send_message(self.kde_fake_input_id, 0, payload)
-        logger.debug("Sent KDE fake input authenticate request")
+        self.portal_conn.router.add_rule(rule)
+        filter = lambda msg: rule.matches(msg)
+        while True:
+            msg = self.portal_conn.recv_until_filtered(filter, timeout=60)
+            if msg:
+                self.portal_conn.router.remove_rule(rule)
+                return msg.body
+
+    def _kde_authenticate_portal(self):
+        """Initialize XDG Desktop Portal RemoteDesktop session using jeepney."""
+        try:
+            from jeepney import DBusAddress, new_method_call
+            from jeepney.io.blocking import open_dbus_connection
+        except ImportError:
+            raise WaylandProtocolError("The 'jeepney' package is required for the Portal backend. Please run: pip install jeepney")
+
+        logger.info("Connecting to session D-Bus for Portal RemoteDesktop...")
+        self.portal_conn = open_dbus_connection(bus='SESSION')
+        
+        portal_addr = DBusAddress(
+            '/org/freedesktop/portal/desktop',
+            bus_name='org.freedesktop.portal.Desktop',
+            interface='org.freedesktop.portal.RemoteDesktop'
+        )
+
+        # 1. CreateSession
+        msg_create = new_method_call(portal_addr, 'CreateSession', 'a{sv}', ({"session_handle_token": ("s", "wayland_auto")},))
+        reply = self.portal_conn.send_and_get_reply(msg_create)
+        req_path = reply.body[0]
+        
+        logger.info("Waiting for CreateSession response...")
+        response_code, results = self._wait_for_response(req_path)
+        if response_code != 0:
+            raise WaylandProtocolError(f"CreateSession failed with response code {response_code}")
+        
+        self.session_path = results.get("session_handle", ("o", ""))
+        if isinstance(self.session_path, tuple):
+            self.session_path = self.session_path[1]
+
+        # 2. SelectDevices (2 = Pointer)
+        msg_select = new_method_call(portal_addr, 'SelectDevices', 'oa{sv}', (
+            self.session_path,
+            {"types": ("u", 2)} # Pointer
+        ))
+        self.portal_conn.send_and_get_reply(msg_select)
+
+        # 3. Start
+        logger.warning("Requesting portal Start. Please ACCEPT the security dialog in your session!")
+        msg_start = new_method_call(portal_addr, 'Start', 'osa{sv}', (
+            self.session_path,
+            "", # parent_window
+            {}  # options
+        ))
+        reply = self.portal_conn.send_and_get_reply(msg_start)
+        req_path2 = reply.body[0]
+        
+        logger.info("Waiting for Start response from user...")
+        response_code, results = self._wait_for_response(req_path2)
+        if response_code != 0:
+            raise WaylandProtocolError(f"Start failed or user rejected with response code {response_code}")
+        
+        logger.info("Portal session started successfully.")
 
     def _kde_motion_absolute(self, x, y):
-        """Send absolute pointer motion via KDE fake input (opcode 9, since v3)."""
-        x_fixed = wl_fixed_from_double(float(x))
-        y_fixed = wl_fixed_from_double(float(y))
-        payload = struct.pack(f"{self.endianness}ii", x_fixed, y_fixed)
-        self.send_message(self.kde_fake_input_id, 9, payload)
+        """Send absolute pointer motion via Portal RemoteDesktop."""
+        from jeepney import DBusAddress, new_method_call
+        portal_addr = DBusAddress(
+            '/org/freedesktop/portal/desktop',
+            bus_name='org.freedesktop.portal.Desktop',
+            interface='org.freedesktop.portal.RemoteDesktop'
+        )
+        msg = new_method_call(portal_addr, 'NotifyPointerMotionAbsolute', 'oa{sv}dd', (
+            self.session_path,
+            {}, # options
+            float(x),
+            float(y)
+        ))
+        # Fire-and-forget or get reply? Get reply to ensure it was sent.
+        self.portal_conn.send_message(msg)
 
     def _kde_button(self, button, state):
-        """Send button event via KDE fake input (opcode 2)."""
-        payload = struct.pack(f"{self.endianness}II", button, state)
-        self.send_message(self.kde_fake_input_id, 2, payload)
+        """Send button event via Portal RemoteDesktop."""
+        from jeepney import DBusAddress, new_method_call
+        portal_addr = DBusAddress(
+            '/org/freedesktop/portal/desktop',
+            bus_name='org.freedesktop.portal.Desktop',
+            interface='org.freedesktop.portal.RemoteDesktop'
+        )
+        
+        # Mapping evdev constants (Wait, libei Portal RemoteDesktop uses linux evdev button codes)
+        if button == BUTTON_LEFT:
+            evdev_btn = 0x110 # BTN_LEFT
+        elif button == BUTTON_RIGHT:
+            evdev_btn = 0x111 # BTN_RIGHT
+        else:
+            evdev_btn = button
+            
+        msg = new_method_call(portal_addr, 'NotifyPointerButton', 'oa{sv}iu', (
+            self.session_path,
+            {}, # options
+            evdev_btn,
+            state # 1 for press, 0 for release
+        ))
+        self.portal_conn.send_message(msg)
 
     # ---- Backend-dispatching methods ----
 

@@ -51,7 +51,7 @@ class Keyboard:
     def typewrite(self, text: str, interval: float = 0):
         """Types the given text with an optional interval between characters."""
         for char in text:
-            subprocess.run(["wtype", char])
+            subprocess.run(["wtype", "--", char])
             time.sleep(interval)
 
     def press(self, key: str):

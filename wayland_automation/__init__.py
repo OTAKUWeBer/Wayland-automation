@@ -15,7 +15,7 @@ from .mouse_controller import Mouse, print_usage
 from .mouse_position import mouse_position_generator
 from .keyboard_controller import Keyboard
 
-__version__ = "0.2.7"
+__version__ = "0.2.8"
 
 __all__ = [
     "__version__",

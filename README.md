@@ -30,7 +30,7 @@ pip install wayland-automation
 | Dependency | What it does | Install command |
 |---|---|---|
 | `wtype` | **Required** — keyboard automation | `sudo pacman -S wtype` (Arch) / `sudo apt install wtype` (Debian) / `sudo dnf install wtype` (Fedora) |
-| `wayland-utils` | Screen resolution detection | `sudo pacman -S wayland-utils` (Arch) / `sudo apt install wayland-utils` (Debian) |
+| `wayland-utils` | Screen resolution detection | `sudo pacman -S wayland-utils` (Arch) / `sudo apt install wayland-utils` (Debian) / `sudo dnf install wayland-utils` (Fedora) |
 
 #### Mouse-tracking backends (pick the one for your compositor)
 

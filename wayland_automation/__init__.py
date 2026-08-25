@@ -11,9 +11,11 @@ Quick start::
     wa.hotkey("ctrl", "s")              # keyboard shortcut
 """
 
-from .mouse_controller import Mouse, print_usage
-from .mouse_position import mouse_position_generator
-from .keyboard_controller import Keyboard
+import sys
+if not '-m' in sys.argv:
+    from .keyboard_controller import Keyboard
+    from .mouse_position import mouse_position_generator
+    from .mouse_controller import Mouse,print_usage
 
 __version__ = "0.2.8"
 

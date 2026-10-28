@@ -2,3 +2,5 @@ include LICENCE
 include README.md
 include pyproject.toml
 include requirements.txt
+include wayland_automation/*.js
+recursive-include tests *.py

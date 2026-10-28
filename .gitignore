@@ -13,12 +13,14 @@ dist/
 *.egg-info/
 
 # Virtual environments (adjust folder names as needed)
+.venv/
 venv/
 env/
 .myenv/
 myenv/
 
 # Unit test / coverage reports
+.pytest_cache/
 .coverage
 .tox/
 .nox/

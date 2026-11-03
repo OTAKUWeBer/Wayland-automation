@@ -14,8 +14,8 @@ Usage::
         mouse.click(600, 400, "nothing")               # move only
         mouse.swipe(100, 200, 800, 200)                # drag gesture
         mouse.auto_click(initial_delay=2, interval=0.1, duration=5)
-        mouse.scroll(-5)                               # scroll up
-        mouse.scroll(2, 500, 800)                      # move and scroll down
+        mouse.scroll(-5)                               # scroll down
+        mouse.scroll(2, 500, 800)                      # move and scroll up
 
 CLI::
 
@@ -44,9 +44,6 @@ BUTTON_MIDDLE = 0x112
 
 # Degrees of rotation corresponding to one mouse wheel click (libinput convention)
 WHEEL_CLICK_ANGLE = 15.0
-
-# Maximum number of wheel clicks sent in one frame
-WHEEL_CLICKS_PER_FRAME = 5
 
 # Mouse wheel axes constants
 AXIS_VERTICAL = 0
@@ -470,7 +467,7 @@ class Mouse:
         if (x is None) != (y is None):
             raise ValueError("x and y must be given together")
         if x is not None:
-            self.send_motion_absolute(x, y, *get_resolution())
+            self.send_motion_absolute(int(x), int(y), *get_resolution())
 
         if clicks == 0:
             if x is not None:
@@ -478,32 +475,29 @@ class Mouse:
                 self.handle_events()
             return
 
-        clicks_remaining = abs(clicks)
-        clicks_sign = 1 if clicks > 0 else -1
+        click_to_send = 1 if clicks > 0 else -1
+        value = convert_float_to_wl_fixed_t(click_to_send * WHEEL_CLICK_ANGLE)
+        axis_source_payload = struct.pack(f"{self.endianness}I", 0)
+        steps = abs(clicks)
 
-        while clicks_remaining > 0:
-            clicks_to_send = min(WHEEL_CLICKS_PER_FRAME, clicks_remaining)
-            clicks_remaining -= clicks_to_send
-            signed_clicks = clicks_to_send * clicks_sign
-
-            self.send_message(self.current_virtual_pointer_id, 5,  # axis_source
-                struct.pack(f"{self.endianness}I", 0))
+        # send one discrete click per frame
+        for step in range(steps):
+            self.send_message(self.current_virtual_pointer_id, 5, axis_source_payload)
 
             # Convert time since startup to ms, mask so that it fits into a u32
             time_ms = int(time.monotonic() * 1000) & 0xFFFFFFFF
-            value = convert_float_to_wl_fixed_t(signed_clicks * WHEEL_CLICK_ANGLE)
 
             self.send_message(self.current_virtual_pointer_id, 7,  # axis_discrete
                 struct.pack(f"{self.endianness}IIii",
                 time_ms,
                 AXIS_VERTICAL,
                 value,
-                signed_clicks
+                click_to_send
             ))
 
             self.send_message(self.current_virtual_pointer_id, 4, b"")  # frame
 
-            if clicks_remaining > 0:
+            if step < steps - 1:
                 time.sleep(0.015)  # Add a small delay between frames
 
         self.send_sync_request()

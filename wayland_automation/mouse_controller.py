@@ -1,7 +1,7 @@
 """
 mouse_controller.py — Low-level Wayland virtual pointer control.
 
-Provides the ``Mouse`` class for moving, clicking, swiping, and auto-clicking
+Provides the ``Mouse`` class for moving, clicking, swiping, auto-clicking, and scrolling
 at absolute screen coordinates via the ``zwlr_virtual_pointer_manager_v1``
 protocol (wlroots-based compositors: Hyprland, Sway, …).
 
@@ -14,12 +14,15 @@ Usage::
         mouse.click(600, 400, "nothing")               # move only
         mouse.swipe(100, 200, 800, 200)                # drag gesture
         mouse.auto_click(initial_delay=2, interval=0.1, duration=5)
+        mouse.scroll(-5)                               # scroll up
+        mouse.scroll(2, 500, 800)                      # move and scroll down
 
 CLI::
 
     python -m wayland_automation.mouse_controller click 250 300 left
     python -m wayland_automation.mouse_controller swipe 100 200 800 200
     python -m wayland_automation.mouse_controller autoclick 3 0.1 10 left
+    python -m wayland_automation.mouse_controller scroll 2 500 800
     python -m wayland_automation.mouse_controller test
 """
 
@@ -38,6 +41,16 @@ logger = logging.getLogger(__name__)
 BUTTON_LEFT = 0x110
 BUTTON_RIGHT = 0x111
 BUTTON_MIDDLE = 0x112
+
+# Degrees of rotation corresponding to one mouse wheel click (libinput convention)
+WHEEL_CLICK_ANGLE = 15.0
+
+# Maximum number of wheel clicks sent in one frame
+WHEEL_CLICKS_PER_FRAME = 5
+
+# Mouse wheel axes constants
+AXIS_VERTICAL = 0
+AXIS_HORIZONTAL = 1
 
 
 class WaylandProtocolError(Exception):
@@ -61,11 +74,17 @@ def encode_wayland_string(s: Optional[str]) -> bytes:
     return struct.pack("<I", length) + encoded + padding
 
 
+def convert_float_to_wl_fixed_t(x: float) -> int:
+    """Convert a float to wl_fixed_t: a 24.8 fixed-point integer"""
+    # multiply by 2^8 because wl_fixed_t has 8 fractional bits
+    return int(x * 256)
+
+
 class Mouse:
     """
     Wayland virtual pointer controller.
 
-    Supports absolute cursor positioning, button clicks (left, right, middle),
+    Supports absolute cursor positioning, button clicks (left, right, middle), scrolling,
     swipe gestures, and auto-clicking on wlroots-based compositors (Hyprland, Sway, etc.).
     """
 
@@ -437,6 +456,59 @@ class Mouse:
         self.send_sync_request()
         self.handle_events()
 
+    def scroll(self, clicks: int, x: Optional[int] = None, y: Optional[int] = None) -> None:
+        """
+        Scrolls the mouse wheel. Optionally moves the pointer to (x, y) before scrolling.
+
+        Args:
+            clicks: The amount of scrolling to perform. Positive for up, negative for down.
+            x, y: Absolute screen coordinates, supply both or neither.
+        """
+        clicks = -int(clicks)  # Whole wheel clicks, fractional part is truncated
+                               # Change clicks sign to match PyAutoGUI's api
+
+        if (x is None) != (y is None):
+            raise ValueError("x and y must be given together")
+        if x is not None:
+            self.send_motion_absolute(x, y, *get_resolution())
+
+        if clicks == 0:
+            if x is not None:
+                self.send_sync_request()
+                self.handle_events()
+            return
+
+        clicks_remaining = abs(clicks)
+        clicks_sign = 1 if clicks > 0 else -1
+
+        while clicks_remaining > 0:
+            clicks_to_send = min(WHEEL_CLICKS_PER_FRAME, clicks_remaining)
+            clicks_remaining -= clicks_to_send
+            signed_clicks = clicks_to_send * clicks_sign
+
+            self.send_message(self.current_virtual_pointer_id, 5,  # axis_source
+                struct.pack(f"{self.endianness}I", 0))
+
+            # Convert time since startup to ms, mask so that it fits into a u32
+            time_ms = int(time.monotonic() * 1000) & 0xFFFFFFFF
+            value = convert_float_to_wl_fixed_t(signed_clicks * WHEEL_CLICK_ANGLE)
+
+            self.send_message(self.current_virtual_pointer_id, 7,  # axis_discrete
+                struct.pack(f"{self.endianness}IIii",
+                time_ms,
+                AXIS_VERTICAL,
+                value,
+                signed_clicks
+            ))
+
+            self.send_message(self.current_virtual_pointer_id, 4, b"")  # frame
+
+            if clicks_remaining > 0:
+                time.sleep(0.015)  # Add a small delay between frames
+
+        self.send_sync_request()
+        self.handle_events()
+
 
 def print_usage() -> None:
     usage_text = """
@@ -455,6 +527,9 @@ Usage:
 
   Auto-click:
       python -m wayland_automation.mouse_controller autoclick [<delay> <interval> <duration> <button>]
+
+  Scroll:
+      python -m wayland_automation.mouse_controller scroll <clicks> [<x> <y>]
 
   Run built-in test:
       python -m wayland_automation.mouse_controller test
@@ -485,7 +560,7 @@ if __name__ == "__main__":
             sys.exit(1)
         sys.exit(0)
 
-    if first_arg in ("swipe", "autoclick", "click"):
+    if first_arg in ("swipe", "autoclick", "click", "scroll"):
         mode = first_arg
         args = sys.argv[2:]
     elif first_arg.isdigit():
@@ -516,3 +591,11 @@ if __name__ == "__main__":
                 sys.exit(1)
             btn = args[2] if len(args) == 3 else "left"
             ms.click(int(args[0]), int(args[1]), btn)
+
+        elif mode == "scroll":
+            if len(args) not in (1, 3):
+                print("Usage: python -m wayland_automation.mouse_controller scroll <clicks> [<x> <y>]")
+                sys.exit(1)
+            clicks = int(args[0])
+            x, y = map(int, args[1:]) if len(args) == 3 else (None, None)
+            ms.scroll(clicks, x, y)

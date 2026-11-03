@@ -13,7 +13,7 @@ Works out of the box on **Hyprland, Sway**, and other **wlroots-based** composit
 
 ## Features
 
-- **Mouse Control** — Move, click (`left`, `right`, `middle`, `nothing`), swipe (drag), and auto-click at absolute coordinates.
+- **Mouse Control** — Move, click (`left`, `right`, `middle`, `nothing`), swipe (drag), auto-click, and scroll at absolute coordinates.
 - **Keyboard Automation** — Type text, tap keys, hold keys down/up, and execute complex hotkeys (`Ctrl+Alt+T`, `Ctrl+S`).
 - **Cursor Tracking** — Real-time position generator or one-shot snapshot (`get_position()`) across multiple compositors:
   - Hyprland (`hyprctl`)
@@ -98,6 +98,7 @@ wa.click(600, 700, "middle")               # Middle click
 wa.click(100, 100, "nothing")              # Move pointer without clicking
 wa.swipe(100, 200, 800, 200, speed=0.5)    # Drag from A to B in 0.5s
 wa.auto_click(initial_delay=2, interval=0.1, duration=5) # Repeated clicks
+wa.scroll(4, 100, 300)                     # Scroll up 4 mouse wheel clicks at (100, 300)
 
 # --- Cursor Position ---
 x, y = wa.get_position()                   # Single snapshot
@@ -163,6 +164,9 @@ wayland-automation swipe 100 100 600 600 --speed 1.5
 # Auto-clicker
 wayland-automation autoclick --delay 2.0 --interval 0.05 --duration 5.0 --button left
 
+# Scroll
+wayland-automation scroll -2 500 300
+
 # Keyboard
 wayland-automation type "Automating Wayland like a pro" --interval 0.02
 wayland-automation press Return
@@ -185,6 +189,8 @@ wayland-automation pos --interval 0.1      # Live coordinate feed
   Drags from `(start_x, start_y)` to `(end_x, end_y)`. `speed` can be `"normal"` (1.0s) or seconds as a float.
 - `wa.auto_click(initial_delay: float = 3.0, interval: float = 0.1, duration: float = 10.0, button: str = "left")`  
   Waits `initial_delay`, then clicks at the current cursor position repeatedly.
+- `wa.scroll(clicks: int, x: Optional[int] = None, y: Optional[int] = None)`
+  Moves pointer to `(x, y)` if coordinates are provided. Scrolls by `clicks` amount. Up if `clicks` is positive, otherwise down.
 - `wa.cleanup()`  
   Releases cached sockets and connections (automatically invoked on interpreter exit).
 

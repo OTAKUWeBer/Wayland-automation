@@ -8,7 +8,7 @@ Quick start::
 
     # Mouse
     wa.click(250, 300, "left")            # click at coordinates
-    x, y = wa.get_position()               # get current cursor position
+    x, y = wa.get_position()              # get current cursor position
     wa.swipe(100, 200, 800, 200)          # drag gesture
 
     # Keyboard
@@ -40,6 +40,7 @@ __all__ = [
     "click",
     "swipe",
     "auto_click",
+    "scroll",
     "get_position",
     "position",
     "mouse_position_generator",
@@ -97,6 +98,15 @@ def auto_click(
 ) -> None:
     """Repeatedly click at current cursor position."""
     _get_default_mouse().auto_click(initial_delay, interval, duration, button)
+
+
+def scroll(
+    clicks: int,
+    x: Optional[int] = None,
+    y: Optional[int] = None
+) -> None:
+    """Scroll the mouse wheel. Optionally move the pointer to (x, y) before scrolling."""
+    _get_default_mouse().scroll(clicks, x, y)
 
 
 def get_position() -> Optional[Tuple[int, int]]:

@@ -127,6 +127,12 @@ def main(argv: List[str] = None) -> int:
     p_auto.add_argument("--duration", type=float, default=10.0, help="Total duration in seconds")
     p_auto.add_argument("--button", default="left", choices=["left", "right", "middle"])
 
+    # Command: scroll
+    p_scroll = subparsers.add_parser("scroll", help="Mouse wheel scrolling")
+    p_scroll.add_argument("clicks", type=int, help="Wheel clicks (positive = up, negative = down)")
+    p_scroll.add_argument("x", nargs="?", type=int, default=None, help="X coordinate to move to")
+    p_scroll.add_argument("y", nargs="?", type=int, default=None, help="Y coordinate to move to")
+
     # Command: type
     p_type = subparsers.add_parser("type", help="Type text on keyboard")
     p_type.add_argument("text", help="Text to type")
@@ -170,6 +176,12 @@ def main(argv: List[str] = None) -> int:
 
     elif args.command == "autoclick":
         wa.auto_click(args.delay, args.interval, args.duration, args.button)
+        return 0
+
+    elif args.command == "scroll":
+        if (args.x is None) != (args.y is None):
+            parser.error("Scroll: x and y must be given together")
+        wa.scroll(args.clicks, args.x, args.y)
         return 0
 
     elif args.command == "type":

@@ -23,6 +23,7 @@ class TestPackage(unittest.TestCase):
             "click",
             "swipe",
             "auto_click",
+            "scroll",
             "typewrite",
             "press",
             "keyDown",

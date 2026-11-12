@@ -432,7 +432,7 @@ class Mouse:
 
         button_code = self._parse_button(button)
 
-        if button_code is not None:
+        if button_code is not None and button_code not in self._held_buttons:
             self._send_button_state_change(button_code, BUTTON_STATE_PRESSED)
             self._held_buttons.add(button_code)
 
@@ -456,11 +456,9 @@ class Mouse:
 
         button_code = self._parse_button(button)
 
-        if button_code is not None:
+        if button_code is not None and button_code in self._held_buttons:
             self._send_button_state_change(button_code, BUTTON_STATE_RELEASED)
-
-            if button_code in self._held_buttons:
-                self._held_buttons.remove(button_code)
+            self._held_buttons.remove(button_code)
 
         self.send_sync_request()
         self.handle_events()

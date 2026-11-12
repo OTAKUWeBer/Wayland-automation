@@ -24,6 +24,8 @@ class TestPackage(unittest.TestCase):
             "swipe",
             "auto_click",
             "scroll",
+            "mouse_down",
+            "mouse_up",
             "typewrite",
             "press",
             "keyDown",

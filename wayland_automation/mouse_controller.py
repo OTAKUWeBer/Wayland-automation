@@ -1,8 +1,8 @@
 """
 mouse_controller.py — Low-level Wayland virtual pointer control.
 
-Provides the ``Mouse`` class for moving, clicking, swiping, auto-clicking, and scrolling
-at absolute screen coordinates via the ``zwlr_virtual_pointer_manager_v1``
+Provides the ``Mouse`` class for moving, clicking, swiping, auto-clicking, scrolling,
+and pressing or releasing buttons at absolute screen coordinates via the ``zwlr_virtual_pointer_manager_v1``
 protocol (wlroots-based compositors: Hyprland, Sway, …).
 
 Usage::
@@ -16,6 +16,10 @@ Usage::
         mouse.auto_click(initial_delay=2, interval=0.1, duration=5)
         mouse.scroll(-5)                               # scroll down
         mouse.scroll(2, 500, 800)                      # move and scroll up
+        mouse.mouse_down()                             # press the left mouse button
+        mouse.mouse_up()                               # release the left mouse button
+        mouse.mouse_down(500, 200, "right")            # move and press the right mouse button
+        mouse.mouse_up(300, 100, "right")              # move and release the right mouse button
 
 CLI::
 
@@ -48,6 +52,10 @@ WHEEL_CLICK_ANGLE = 15.0
 # Mouse wheel axes constants
 AXIS_VERTICAL = 0
 AXIS_HORIZONTAL = 1
+
+# Mouse button states
+BUTTON_STATE_RELEASED = 0
+BUTTON_STATE_PRESSED = 1
 
 
 class WaylandProtocolError(Exception):
@@ -82,7 +90,8 @@ class Mouse:
     Wayland virtual pointer controller.
 
     Supports absolute cursor positioning, button clicks (left, right, middle), scrolling,
-    swipe gestures, and auto-clicking on wlroots-based compositors (Hyprland, Sway, etc.).
+    swipe gestures, auto-clicking, and pressing/releasing mouse buttons on wlroots-based compositors
+    (Hyprland, Sway, etc.).
     """
 
     def __init__(self):
@@ -93,9 +102,9 @@ class Mouse:
         self.virtual_pointer_manager_id = 4
         self.next_id = 5
         self.current_virtual_pointer_id: Optional[int] = None
-
         self.protocols_found = []
         self.virtual_pointer_manager_bound = False
+        self._held_buttons: set[int] = set()
 
         try:
             self.socket_path = self.get_socket_path()
@@ -136,7 +145,17 @@ class Mouse:
         return sock is not None and sock.fileno() != -1
 
     def close(self) -> None:
-        """Safely close the Wayland socket."""
+        """Release any held buttons, then safely close the Wayland socket."""
+        held_buttons = getattr(self, "_held_buttons", set())
+        self._held_buttons = set()
+
+        for button_code in held_buttons:
+            try:
+                self._send_button_state_change(button_code, BUTTON_STATE_RELEASED)
+            except WaylandConnectionError as e:
+                logger.debug(f"Could not release button {hex(button_code)} on close: {e}")
+
+        # Close socket
         sock = getattr(self, "sock", None)
         if sock is not None:
             try:
@@ -302,30 +321,57 @@ class Mouse:
     def send_motion_absolute(self, x: int, y: int, x_extent: int, y_extent: int) -> None:
         """
         Send motion_absolute event to virtual pointer.
-        x_extent: total screen width
-        y_extent: total screen height
+
+        Args:
+            x_extent: Total screen width.
+            y_extent: Total screen height.
         """
         payload = struct.pack(f"{self.endianness}IIIII", 0, int(x), int(y), int(x_extent), int(y_extent))
         self.send_message(self.current_virtual_pointer_id, 1, payload)
         # Frame event after motion
         self.send_message(self.current_virtual_pointer_id, 4, b"")
 
+    def _handle_optional_pointer_movement(self, x: Optional[int], y: Optional[int]) -> None:
+        """
+        Moves pointer to (x, y) if user provided both coordinates.
+        Assumes it's only correct to provide both or neither of the coordinates.
+
+        Args:
+            x: X coordinate.
+            y: Y coordinate.
+        """
+        if (x is None) != (y is None):
+            raise ValueError("x and y must be given together")
+
+        if x is not None:
+            self.send_motion_absolute(int(x), int(y), *get_resolution())
+
+    def _send_button_state_change(self, button_code: int, button_state: int) -> None:
+        """
+        Send button and frame event to virtual pointer.
+
+        Args:
+            button_code: One of the button code constants.
+            button_state: 0 for released state, 1 for pressed state.
+        """
+        self.send_message(
+            self.current_virtual_pointer_id, 2,  # button event
+            struct.pack(f"{self.endianness}III",
+                0,
+                button_code,
+                button_state
+        ))
+        self.send_message(self.current_virtual_pointer_id, 4, b"")  # frame
+
     def send_click(self, button: int) -> None:
-        """Send button press followed by release with frame events."""
-        # Press
-        self.send_message(
-            self.current_virtual_pointer_id,
-            2,
-            struct.pack(f"{self.endianness}III", 0, button, 1),
-        )
-        self.send_message(self.current_virtual_pointer_id, 4, b"")
-        # Release
-        self.send_message(
-            self.current_virtual_pointer_id,
-            2,
-            struct.pack(f"{self.endianness}III", 0, button, 0),
-        )
-        self.send_message(self.current_virtual_pointer_id, 4, b"")
+        """
+        Send button press followed by release to simulate a click
+
+        Args:
+            button: Button code constant.
+        """
+        self._send_button_state_change(button, BUTTON_STATE_PRESSED)
+        self._send_button_state_change(button, BUTTON_STATE_RELEASED)
 
     @staticmethod
     def _parse_button(button: Optional[Union[str, int]]) -> Optional[int]:
@@ -367,6 +413,58 @@ class Mouse:
         self.send_sync_request()
         self.handle_events()
 
+    def mouse_down(
+        self,
+        x: Optional[int] = None,
+        y: Optional[int] = None,
+        button: Optional[Union[str, int]] = "left"
+    ) -> None:
+        """
+        Presses a button without releasing it. Optionally moves the pointer to (x, y) before pressing.
+        Buttons still held when this Mouse is closed get automatically released. A process killed
+        with SIGKILL skips this.
+
+        Args:
+            x, y: Absolute screen coordinates, supply both or neither.
+            button: 'left', 'right', 'middle', or numeric button code.
+        """
+        self._handle_optional_pointer_movement(x, y)
+
+        button_code = self._parse_button(button)
+
+        if button_code is not None:
+            self._send_button_state_change(button_code, BUTTON_STATE_PRESSED)
+            self._held_buttons.add(button_code)
+
+        self.send_sync_request()
+        self.handle_events()
+
+    def mouse_up(
+        self,
+        x: Optional[int] = None,
+        y: Optional[int] = None,
+        button: Optional[Union[str, int]] = "left"
+    ) -> None:
+        """
+        Releases a button. Optionally moves the pointer to (x, y) before releasing.
+
+        Args:
+            x, y: Absolute screen coordinates, supply both or neither.
+            button: 'left', 'right', 'middle', or numeric button code.
+        """
+        self._handle_optional_pointer_movement(x, y)
+
+        button_code = self._parse_button(button)
+
+        if button_code is not None:
+            self._send_button_state_change(button_code, BUTTON_STATE_RELEASED)
+
+            if button_code in self._held_buttons:
+                self._held_buttons.remove(button_code)
+
+        self.send_sync_request()
+        self.handle_events()
+
     def swipe(
         self,
         start_x: int,
@@ -397,12 +495,7 @@ class Mouse:
         self.send_motion_absolute(int(start_x), int(start_y), width, height)
 
         # Mouse down (left button)
-        self.send_message(
-            self.current_virtual_pointer_id,
-            2,
-            struct.pack(f"{self.endianness}III", 0, BUTTON_LEFT, 1),
-        )
-        self.send_message(self.current_virtual_pointer_id, 4, b"")
+        self._send_button_state_change(BUTTON_LEFT, BUTTON_STATE_PRESSED)
 
         steps = 20
         step_duration = max(0.001, duration / steps)
@@ -414,12 +507,8 @@ class Mouse:
             time.sleep(step_duration)
 
         # Mouse up
-        self.send_message(
-            self.current_virtual_pointer_id,
-            2,
-            struct.pack(f"{self.endianness}III", 0, BUTTON_LEFT, 0),
-        )
-        self.send_message(self.current_virtual_pointer_id, 4, b"")
+        self._send_button_state_change(BUTTON_LEFT, BUTTON_STATE_RELEASED)
+
         self.send_sync_request()
         self.handle_events()
 
@@ -464,10 +553,7 @@ class Mouse:
         clicks = -int(clicks)  # Whole wheel clicks, fractional part is truncated
                                # Change clicks sign to match PyAutoGUI's api
 
-        if (x is None) != (y is None):
-            raise ValueError("x and y must be given together")
-        if x is not None:
-            self.send_motion_absolute(int(x), int(y), *get_resolution())
+        self._handle_optional_pointer_movement(x, y)
 
         if clicks == 0:
             if x is not None:

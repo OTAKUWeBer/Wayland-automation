@@ -13,7 +13,7 @@ Works out of the box on **Hyprland, Sway**, and other **wlroots-based** composit
 
 ## Features
 
-- **Mouse Control** — Move, click (`left`, `right`, `middle`, `nothing`), swipe (drag), auto-click, and scroll at absolute coordinates.
+- **Mouse Control** — Move, click (`left`, `right`, `middle`, `nothing`), swipe (drag), auto-click, scroll, button press and release at absolute coordinates.
 - **Keyboard Automation** — Type text, tap keys, hold keys down/up, and execute complex hotkeys (`Ctrl+Alt+T`, `Ctrl+S`).
 - **Cursor Tracking** — Real-time position generator or one-shot snapshot (`get_position()`) across multiple compositors:
   - Hyprland (`hyprctl`)
@@ -99,6 +99,8 @@ wa.click(100, 100, "nothing")              # Move pointer without clicking
 wa.swipe(100, 200, 800, 200, speed=0.5)    # Drag from A to B in 0.5s
 wa.auto_click(initial_delay=2, interval=0.1, duration=5) # Repeated clicks
 wa.scroll(4, 100, 300)                     # Scroll up 4 mouse wheel clicks at (100, 300)
+wa.mouse_down(300, 200, "left")            # Move to (300, 200) and hold down the left mouse button
+wa.mouse_up(900, 100, "left")              # Move to (900, 100) and release the left mouse button
 
 # --- Cursor Position ---
 x, y = wa.get_position()                   # Single snapshot
@@ -191,6 +193,12 @@ wayland-automation pos --interval 0.1      # Live coordinate feed
   Waits `initial_delay`, then clicks at the current cursor position repeatedly.
 - `wa.scroll(clicks: int, x: Optional[int] = None, y: Optional[int] = None)`
   Moves pointer to `(x, y)` if coordinates are provided. Scrolls by `clicks` amount. Up if `clicks` is positive, otherwise down.
+- `wa.mouse_down(x: Optional[int] = None, y: Optional[int] = None, button: Optional[Union[str, int]] = "left")`
+  Moves pointer to `(x, y)` if coordinates are provided. Presses `button` (without releasing).
+  Buttons still held when the `Mouse` that pressed them is closed are released automatically.
+  A process killed with SIGKILL skips this.
+- `wa.mouse_up(x: Optional[int] = None, y: Optional[int] = None, button: Optional[Union[str, int]] = "left")`
+  Moves pointer to `(x, y)` if coordinates are provided. Releases `button`.
 - `wa.cleanup()`  
   Releases cached sockets and connections (automatically invoked on interpreter exit).
 

@@ -41,6 +41,8 @@ __all__ = [
     "swipe",
     "auto_click",
     "scroll",
+    "mouse_down",
+    "mouse_up",
     "get_position",
     "position",
     "mouse_position_generator",
@@ -107,6 +109,28 @@ def scroll(
 ) -> None:
     """Scroll the mouse wheel. Optionally move the pointer to (x, y) before scrolling."""
     _get_default_mouse().scroll(clicks, x, y)
+
+
+def mouse_down(
+    x: Optional[int] = None,
+    y: Optional[int] = None,
+    button: Optional[Union[str, int]] = "left"
+) -> None:
+    """
+    Presses a button without releasing it. Optionally moves the pointer to (x, y) before pressing.
+    """
+    _get_default_mouse().mouse_down(x=x, y=y, button=button)
+
+
+def mouse_up(
+    x: Optional[int] = None,
+    y: Optional[int] = None,
+    button: Optional[Union[str, int]] = "left"
+) -> None:
+    """
+    Releases a button. Optionally moves the pointer to (x, y) before releasing.
+    """
+    _get_default_mouse().mouse_up(x=x, y=y, button=button)
 
 
 def get_position() -> Optional[Tuple[int, int]]:

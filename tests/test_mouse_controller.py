@@ -55,7 +55,64 @@ class TestMouseController(unittest.TestCase):
         path = ms.get_socket_path()
         self.assertEqual(path, os.path.join("/custom/runtime", "wayland-1"))
 
+    def test_handle_optional_pointer_movement_validation(self):
+        ms = object.__new__(Mouse)
+        ms.send_motion_absolute = MagicMock()
+        # Supplying only x or only y raises ValueError
+        with self.assertRaises(ValueError):
+            ms._handle_optional_pointer_movement(100, None)
+        with self.assertRaises(ValueError):
+            ms._handle_optional_pointer_movement(None, 200)
+
+        # Supplying neither does nothing
+        ms._handle_optional_pointer_movement(None, None)
+        ms.send_motion_absolute.assert_not_called()
+
+        # Supplying both moves pointer
+        with patch("wayland_automation.mouse_controller.get_resolution", return_value=(1920, 1080)):
+            ms._handle_optional_pointer_movement(500, 300)
+            ms.send_motion_absolute.assert_called_once_with(500, 300, 1920, 1080)
+
+    def test_mouse_down_and_up_positional_string_and_aliases(self):
+        ms = object.__new__(Mouse)
+        ms.current_virtual_pointer_id = 5
+        ms.endianness = "<"
+        ms._held_buttons = set()
+        ms.send_message = MagicMock()
+        ms.send_motion_absolute = MagicMock()
+        ms.send_sync_request = MagicMock()
+        ms.handle_events = MagicMock()
+
+        # Passing lone string as first positional arg
+        ms.mouse_down("right")
+        self.assertIn(BUTTON_RIGHT, ms._held_buttons)
+
+        # Redundant press should not duplicate
+        ms.mouse_down("right")
+        self.assertEqual(len(ms._held_buttons), 1)
+
+        # Release with string
+        ms.mouse_up("right")
+        self.assertNotIn(BUTTON_RIGHT, ms._held_buttons)
+
+        # Aliases test
+        ms.mouseDown("left")
+        self.assertIn(BUTTON_LEFT, ms._held_buttons)
+        ms.mouseUp("left")
+        self.assertNotIn(BUTTON_LEFT, ms._held_buttons)
+
+    def test_close_releases_held_buttons(self):
+        ms = object.__new__(Mouse)
+        ms.current_virtual_pointer_id = 5
+        ms.endianness = "<"
+        ms._held_buttons = {BUTTON_LEFT, BUTTON_MIDDLE}
+        ms.sock = MagicMock()
+        ms.send_message = MagicMock()
+
+        ms.close()
+        self.assertEqual(len(ms._held_buttons), 0)
+        self.assertIsNone(ms.sock)
+
 
 if __name__ == "__main__":
     unittest.main()
-

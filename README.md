@@ -99,6 +99,7 @@ wa.click(100, 100, "nothing")              # Move pointer without clicking
 wa.swipe(100, 200, 800, 200, speed=0.5)    # Drag from A to B in 0.5s
 wa.auto_click(initial_delay=2, interval=0.1, duration=5) # Repeated clicks
 wa.scroll(4, 100, 300)                     # Scroll up 4 mouse wheel clicks at (100, 300)
+wa.mouse_down("middle")                    # Press the middle mouse button
 wa.mouse_down(300, 200, "left")            # Move to (300, 200) and hold down the left mouse button
 wa.mouse_up(900, 100, "left")              # Move to (900, 100) and release the left mouse button
 
@@ -195,10 +196,12 @@ wayland-automation pos --interval 0.1      # Live coordinate feed
   Moves pointer to `(x, y)` if coordinates are provided. Scrolls by `clicks` amount. Up if `clicks` is positive, otherwise down.
 - `wa.mouse_down(x: Optional[int] = None, y: Optional[int] = None, button: Optional[Union[str, int]] = "left")`
   Moves pointer to `(x, y)` if coordinates are provided. Presses `button` (without releasing).
+  Can be called with `mouseDown`.
   Buttons still held when the `Mouse` that pressed them is closed are released automatically.
   A process killed with SIGKILL skips this.
 - `wa.mouse_up(x: Optional[int] = None, y: Optional[int] = None, button: Optional[Union[str, int]] = "left")`
   Moves pointer to `(x, y)` if coordinates are provided. Releases `button`.
+  Can be called with `mouseUp`.
 - `wa.cleanup()`  
   Releases cached sockets and connections (automatically invoked on interpreter exit).
 

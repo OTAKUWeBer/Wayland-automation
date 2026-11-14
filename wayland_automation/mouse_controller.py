@@ -18,6 +18,7 @@ Usage::
         mouse.scroll(2, 500, 800)                      # move and scroll up
         mouse.mouse_down()                             # press the left mouse button
         mouse.mouse_up()                               # release the left mouse button
+        mouse.mouse_down("middle")                     # press the middle button
         mouse.mouse_down(500, 200, "right")            # move and press the right mouse button
         mouse.mouse_up(300, 100, "right")              # move and release the right mouse button
 
@@ -415,7 +416,7 @@ class Mouse:
 
     def mouse_down(
         self,
-        x: Optional[int] = None,
+        x: Optional[Union[int, str]] = None,
         y: Optional[int] = None,
         button: Optional[Union[str, int]] = "left"
     ) -> None:
@@ -425,9 +426,15 @@ class Mouse:
         with SIGKILL skips this.
 
         Args:
-            x, y: Absolute screen coordinates, supply both or neither.
+            x, y: Absolute screen coordinates, supply both or neither. A lone string
+                  is treated as the button name, e.g. mouse_down("right"). Pass numeric button
+                  codes via `button=`.
             button: 'left', 'right', 'middle', or numeric button code.
         """
+        if isinstance(x, str) and y is None:
+            button = x
+            x = None
+
         self._handle_optional_pointer_movement(x, y)
 
         button_code = self._parse_button(button)
@@ -441,7 +448,7 @@ class Mouse:
 
     def mouse_up(
         self,
-        x: Optional[int] = None,
+        x: Optional[Union[int, str]] = None,
         y: Optional[int] = None,
         button: Optional[Union[str, int]] = "left"
     ) -> None:
@@ -449,9 +456,15 @@ class Mouse:
         Releases a button. Optionally moves the pointer to (x, y) before releasing.
 
         Args:
-            x, y: Absolute screen coordinates, supply both or neither.
+            x, y: Absolute screen coordinates, supply both or neither. A lone string
+                  is treated as the button name, e.g. mouse_up("right"). Pass numeric button
+                  codes via `button=`.
             button: 'left', 'right', 'middle', or numeric button code.
         """
+        if isinstance(x, str) and y is None:
+            button = x
+            x = None
+
         self._handle_optional_pointer_movement(x, y)
 
         button_code = self._parse_button(button)
@@ -462,6 +475,10 @@ class Mouse:
 
         self.send_sync_request()
         self.handle_events()
+
+    # camelCase aliases
+    mouseDown = mouse_down
+    mouseUp = mouse_up
 
     def swipe(
         self,

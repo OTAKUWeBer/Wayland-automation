@@ -42,7 +42,9 @@ __all__ = [
     "auto_click",
     "scroll",
     "mouse_down",
+    "mouseDown",
     "mouse_up",
+    "mouseUp",
     "get_position",
     "position",
     "mouse_position_generator",
@@ -112,25 +114,44 @@ def scroll(
 
 
 def mouse_down(
-    x: Optional[int] = None,
+    x: Optional[Union[int, str]] = None,
     y: Optional[int] = None,
     button: Optional[Union[str, int]] = "left"
 ) -> None:
     """
     Presses a button without releasing it. Optionally moves the pointer to (x, y) before pressing.
+    Buttons still held at exit or on cleanup() get automatically released. A process killed
+    with SIGKILL skips this.
+
+    Args:
+        x, y: Absolute screen coordinates, supply both or neither. A lone string
+              is treated as the button name, e.g. mouse_down("right"). Pass numeric button
+              codes via `button=`.
+        button: 'left', 'right', 'middle', or numeric button code.
     """
     _get_default_mouse().mouse_down(x=x, y=y, button=button)
 
 
 def mouse_up(
-    x: Optional[int] = None,
+    x: Optional[Union[int, str]] = None,
     y: Optional[int] = None,
     button: Optional[Union[str, int]] = "left"
 ) -> None:
     """
     Releases a button. Optionally moves the pointer to (x, y) before releasing.
+
+    Args:
+        x, y: Absolute screen coordinates, supply both or neither. A lone string
+              is treated as the button name, e.g. mouse_up("right"). Pass numeric button
+              codes via `button=`.
+        button: 'left', 'right', 'middle', or numeric button code.
     """
     _get_default_mouse().mouse_up(x=x, y=y, button=button)
+
+
+# camelCase aliases
+mouseDown = mouse_down
+mouseUp = mouse_up
 
 
 def get_position() -> Optional[Tuple[int, int]]:

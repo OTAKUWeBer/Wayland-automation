@@ -20,7 +20,7 @@ Quick start::
 import atexit
 from typing import Any, Generator, Optional, Tuple, Union
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 # Button constants (re-exported for convenience)
 BUTTON_LEFT = 0x110

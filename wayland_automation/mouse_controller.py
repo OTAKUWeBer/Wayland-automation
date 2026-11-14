@@ -152,7 +152,7 @@ class Mouse:
 
         for button_code in held_buttons:
             try:
-                self._send_button_state_change(button_code, BUTTON_STATE_RELEASED)
+                self._send_raw_button_event(button_code, BUTTON_STATE_RELEASED)
             except WaylandConnectionError as e:
                 logger.debug(f"Could not release button {hex(button_code)} on close: {e}")
 
@@ -347,9 +347,9 @@ class Mouse:
         if x is not None:
             self.send_motion_absolute(int(x), int(y), *get_resolution())
 
-    def _send_button_state_change(self, button_code: int, button_state: int) -> None:
+    def _send_raw_button_event(self, button_code: int, button_state: int) -> None:
         """
-        Send button and frame event to virtual pointer.
+        Send a button event and frame.
 
         Args:
             button_code: One of the button code constants.
@@ -363,6 +363,25 @@ class Mouse:
                 button_state
         ))
         self.send_message(self.current_virtual_pointer_id, 4, b"")  # frame
+
+    def _send_button_state_change(self, button_code: int, button_state: int) -> None:
+        """
+        Change virtual pointer button states. Skips redundant transitions and updates _held_buttons.
+
+        Args:
+            button_code: One of the button code constants.
+            button_state: 0 for released state, 1 for pressed state.
+        """
+
+        if bool(button_state) == (button_code in self._held_buttons):
+            return  # button is already in the required state
+
+        self._send_raw_button_event(button_code, button_state)
+
+        if button_state == BUTTON_STATE_PRESSED:
+            self._held_buttons.add(button_code)
+        else:
+            self._held_buttons.remove(button_code)
 
     def send_click(self, button: int) -> None:
         """
@@ -439,9 +458,8 @@ class Mouse:
 
         button_code = self._parse_button(button)
 
-        if button_code is not None and button_code not in self._held_buttons:
+        if button_code is not None:
             self._send_button_state_change(button_code, BUTTON_STATE_PRESSED)
-            self._held_buttons.add(button_code)
 
         self.send_sync_request()
         self.handle_events()
@@ -469,9 +487,8 @@ class Mouse:
 
         button_code = self._parse_button(button)
 
-        if button_code is not None and button_code in self._held_buttons:
+        if button_code is not None:
             self._send_button_state_change(button_code, BUTTON_STATE_RELEASED)
-            self._held_buttons.remove(button_code)
 
         self.send_sync_request()
         self.handle_events()
